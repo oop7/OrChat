@@ -8,7 +8,6 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 
 ![OrChat screenshot](https://github.com/user-attachments/assets/b74094e2-dbeb-4707-a5dd-8b5f312bf997)
 
-
 ## ✨ Features
 
 - **Universal Model Access**: Connect to any AI model available on OpenRouter
@@ -53,13 +52,28 @@ python main.py
      ```bash
      orchat --setup
      ```
-    - if you follow from source method:
-      ```bash
-      python main.py --setup
-      ```
-4. Enter your OpenRouter API key when prompted
-5. Select your preferred AI model and configure settings
-6. Start chatting!
+   - if you follow from source method:
+     ```bash
+     python main.py --setup
+     ```
+3. Enter your OpenRouter API key when prompted
+4. Select your preferred AI model and configure settings
+5. Start chatting!
+
+## 🪛 Add-Ons
+
+### FZF fuzzy search
+
+1. Install fzf and pyfzf
+
+   - Install pyfzf
+     ```bash
+     pip install pyfzf
+     ```
+   - Fzf can be downloaded from https://github.com/junegunn/fzf?tab=readme-ov-file#installation
+
+2. Ensure fzf is in your path
+3. From now on, the model selection will use fzf to search!
 
 ## ⚙️ Configuration
 
@@ -68,13 +82,16 @@ OrChat can be configured in multiple ways:
 1. **Setup Wizard**: Run `python main.py --setup` for interactive configuration
 2. **Config File**: Edit the `config.ini` file in the application directory
 3. **Environment Variables**: Create a `.env` file with your configuration
+4. **System Environment Variables**: Set the OPENROUTER_API_KEY on the user/system environment.
 
 Example `.env` file:
+
 ```
 OPENROUTER_API_KEY=your_api_key_here
 ```
 
 Example `config.ini` structure:
+
 ```ini
 [API]
 OPENROUTER_API_KEY = your_api_key_here
@@ -99,26 +116,27 @@ THINKING_MODE = True
 
 ## 💬 Chat Commands
 
-| Command | Description |
-|---------|-------------|
-| `/help` | Show available commands |
-| `/exit` | Exit the chat |
-| `/new` | Start a new conversation |
-| `/clear` | Clear conversation history |
-| `/cls` or `/clear-screen` | Clear the terminal screen |
-| `/save [format]` | Save conversation (formats: md, html, json, txt, pdf) |
-| `/model` | Change the AI model |
-| `/temperature <0.0-2.0>` | Adjust temperature setting |
-| `/system` | View or change system instructions |
-| `/tokens` | Show token usage statistics |
-| `/speed` | Show response time statistics |
-| `/theme <theme>` | Change the color theme (default, dark, light, hacker) |
-| `/thinking` | Show last AI thinking process |
-| `/thinking-mode` | Toggle thinking mode on/off |
-| `/attach` or `/upload` | Share a file with the AI |
-| `/about` | Show information about OrChat |
-| `/update` | Check for updates |
-| `/settings` | View current settings |
+| Command                   | Description                                           |
+| ------------------------- | ----------------------------------------------------- |
+| `/help`                   | Show available commands                               |
+| `/exit`                   | Exit the chat                                         |
+| `/quit`                   | Exit the chat                                         |
+| `/new`                    | Start a new conversation                              |
+| `/clear`                  | Clear conversation history                            |
+| `/cls` or `/clear-screen` | Clear the terminal screen                             |
+| `/save [format]`          | Save conversation (formats: md, html, json, txt, pdf) |
+| `/model`                  | Change the AI model                                   |
+| `/temperature <0.0-2.0>`  | Adjust temperature setting                            |
+| `/system`                 | View or change system instructions                    |
+| `/tokens`                 | Show token usage statistics                           |
+| `/speed`                  | Show response time statistics                         |
+| `/theme <theme>`          | Change the color theme (default, dark, light, hacker) |
+| `/thinking`               | Show last AI thinking process                         |
+| `/thinking-mode`          | Toggle thinking mode on/off                           |
+| `/attach` or `/upload`    | Share a file with the AI                              |
+| `/about`                  | Show information about OrChat                         |
+| `/update`                 | Check for updates                                     |
+| `/settings`               | View current settings                                 |
 
 ## 📁 File Attachment
 
@@ -129,6 +147,7 @@ Share files with the AI for analysis:
 ```
 
 Supported file types:
+
 - **Images**: JPG, PNG, GIF, WEBP (displayed visually with multimodal models)
 - **Code Files**: Python, JavaScript, Java, C++, etc. (with syntax highlighting)
 - **Text Documents**: TXT, MD, CSV (full content displayed)
@@ -156,17 +175,17 @@ from main import Plugin
 class MyCustomPlugin(Plugin):
     def __init__(self):
         super().__init__("My Plugin", "Description of what my plugin does")
-    
+
     def on_message(self, message, role):
         # Process message before sending/after receiving
         return message
-    
+
     def on_command(self, command, args):
         # Handle custom commands
         if command == "my_command":
             return True, "Command executed successfully!"
         return False, "Command not handled"
-    
+
     def get_commands(self):
         return ["/my_command - Description of my custom command"]
 ```
@@ -183,6 +202,7 @@ Change the visual appearance with the `/theme` command:
 ## 📊 Token Management
 
 OrChat intelligently manages conversation context to keep within token limits:
+
 - Automatically trims old messages when approaching limits
 - Displays token usage statistics after each response
 - Allows manual clearing of context with `/clear`

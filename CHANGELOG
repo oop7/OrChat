@@ -1,0 +1,18 @@
+# Changelog
+
+## 2025-05-23 - 1.2.1
+
+### General
+
+- Removed unused imports
+- Removed duplicated imports
+- Added quit as exit alias
+- Added support for system/user environment variable without .env
+- Removed unnecesary elses when returning a value from the if
+- format is a built-in function. Renamed to fmt
+- Some fixes based on pylint recommendations.
+
+### Model list
+
+- Added pager to model list
+- Added the possibility to use fzf for filtering
