@@ -245,7 +245,7 @@ def load_config():
                 'temperature': settings.getfloat('TEMPERATURE', 0.7),
                 'system_instructions': settings.get('SYSTEM_INSTRUCTIONS', ""),
                 'theme': settings.get('THEME', 'default'),
-                'max_tokens': settings.getint('MAX_TOKENS', 8000),
+                'max_tokens': settings.getint('MAX_TOKENS', 0),
                 'autosave_interval': settings.getint('AUTOSAVE_INTERVAL', 300),
                 'streaming': settings.getboolean('STREAMING', True),
                 'thinking_mode': settings.getboolean('THINKING_MODE', False)  # Changed default to False
@@ -258,7 +258,7 @@ def load_config():
         'temperature': 0.7,
         'system_instructions': "",
         'theme': 'default',
-        'max_tokens': 8000,
+        'max_tokens': 0,
         'autosave_interval': 300,
         'streaming': True,
         'thinking_mode': False  # Changed default to False
@@ -311,9 +311,10 @@ def save_config(config_data):
 def count_tokens(text, model_name="cl100k_base"):
     """Counts the number of tokens in a given text string using tiktoken."""
     try:
-        encoding = tiktoken.get_encoding(model_name)
+        # tiktoken.encoding_for_model will raise a KeyError if the model is not found.
+        encoding = tiktoken.encoding_for_model(model_name)
     except KeyError:
-        console.print(f"[yellow]Warning: Model encoding {model_name} not found. Using cl100k_base as default[/yellow]")
+        # Fallback to a default encoding for unknown models
         encoding = tiktoken.get_encoding("cl100k_base")
 
     tokens = encoding.encode(text)
@@ -349,10 +350,10 @@ def get_model_info(model_id):
             if model["id"] == model_id:
                 return model
         
-        console.print(f"[red] Failed to fetch model token count.[/red]")
+        console.print(f"[yellow]Warning: Could not find info for model '{model_id}'.[/yellow]")
         return None
     except Exception as e:
-        console.print(f"[red] Failed to fetch model token count: {str(e)}[/red]")
+        console.print(f"[red] Failed to fetch model info: {str(e)}[/red]")
         return None
 
 def get_enhanced_models():
@@ -1310,7 +1311,7 @@ def setup_wizard():
         'temperature': temperature,
         'system_instructions': system_instructions,
         'theme': theme_choice,
-        'max_tokens': 8000,
+        'max_tokens': 0,
         'autosave_interval': 300,
         'streaming': True,
         'thinking_mode': thinking_mode
@@ -1842,7 +1843,18 @@ def chat_with_model(config, conversation_history=None):
     total_completion_tokens = 0
     response_times = []
     message_count = 0
-    max_tokens = None  # Initialize max_tokens variable
+    max_tokens = config.get('max_tokens')
+    
+    if not max_tokens or max_tokens == 0:
+        model_info = get_model_info(config['model'])
+        if model_info and 'context_length' in model_info and model_info['context_length']:
+            max_tokens = model_info['context_length']
+            console.print(f"[dim]Using model's context length: {max_tokens:,} tokens[/dim]")
+        else:
+            max_tokens = 8192
+            console.print(f"[yellow]Could not determine model's context length. Using default: {max_tokens:,} tokens[/yellow]")
+    else:
+        console.print(f"[dim]Using user-defined max tokens: {max_tokens:,}[/dim]")
 
     # Create a session directory for saving files
     session_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1854,7 +1866,7 @@ def chat_with_model(config, conversation_history=None):
     autosave_interval = config['autosave_interval']
 
     # Check if we need to trim the conversation history
-    conversation_history, trimmed_count = manage_context_window(conversation_history)
+    conversation_history, trimmed_count = manage_context_window(conversation_history, max_tokens=max_tokens, model_name=config['model'])
     if trimmed_count > 0:
         console.print(f"[yellow]Note: Removed {trimmed_count} earlier messages to stay within the context window.[/yellow]")
 
@@ -2324,10 +2336,13 @@ def chat_with_model(config, conversation_history=None):
             # Get model max tokens
             model_info = get_model_info(config['model'])
             if model_info and 'context_length' in model_info:
-                max_tokens = model_info['context_length']
+                # This is just for display, max_tokens for management is set at the start
+                display_max_tokens = model_info['context_length']
+            else:
+                display_max_tokens = max_tokens
 
             # Check if we need to trim the conversation history
-            conversation_history, trimmed_count = manage_context_window(conversation_history)
+            conversation_history, trimmed_count = manage_context_window(conversation_history, max_tokens=max_tokens, model_name=config['model'])
             if trimmed_count > 0:
                 console.print(f"[yellow]Note: Removed {trimmed_count} earlier messages to stay within the context window.[/yellow]")
 
@@ -2414,7 +2429,7 @@ def chat_with_model(config, conversation_history=None):
                         console.print(token_display)
                         
                         if max_tokens:
-                            console.print(f"[dim]Total Tokens: {total_tokens_used:,} / {max_tokens:,}[/dim]")
+                            console.print(f"[dim]Total Tokens: {total_tokens_used:,} / {display_max_tokens:,}[/dim]")
                         
                         # Increment message count for successful exchanges
                         message_count += 1
