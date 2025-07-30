@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
+from rich.markdown import Markdown
 from packaging import version
 
 try:
@@ -1416,14 +1417,6 @@ def stream_response(response, start_time, thinking_mode=False):
     except Exception as e:
         console.print(f"\n[red]Error during streaming: {str(e)}[/red]")
 
-    # Now display the collected content all at once
-    # This avoids the vertical text issue
-    if collected_content:
-        print("".join(collected_content))
-    else:
-        # If we only got thinking content, display a default response
-        print("Hello! I'm here to help you.")
-
     # More robust thinking extraction - uses regex pattern to look for any thinking tags in the full content
     thinking_section = ""
     thinking_pattern = re.compile(r'<thinking>(.*?)</thinking>', re.DOTALL)
@@ -1436,7 +1429,7 @@ def stream_response(response, start_time, thinking_mode=False):
 
         # Display thinking content immediately if found
         console.print(Panel.fit(
-            last_thinking_content,
+            Markdown(last_thinking_content),
             title="🧠 AI Thinking Process",
             border_style="yellow"
         ))
@@ -1447,7 +1440,7 @@ def stream_response(response, start_time, thinking_mode=False):
 
             # Display thinking content immediately if found
             console.print(Panel.fit(
-                last_thinking_content,
+                Markdown(last_thinking_content),
                 title="🧠 AI Thinking Process",
                 border_style="yellow"
             ))
@@ -1469,6 +1462,11 @@ def stream_response(response, start_time, thinking_mode=False):
     # If after cleaning we have nothing, use a default response
     if not cleaned_content.strip():
         cleaned_content = "Hello! I'm here to help you."
+
+    if cleaned_content:
+        console.print(Markdown(cleaned_content))
+    else:
+        console.print("Hello! I'm here to help you.")
 
     response_time = time.time() - start_time
     return cleaned_content, response_time
