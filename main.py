@@ -1176,9 +1176,8 @@ def get_model_pricing_info(model_name):
                             'provider': endpoint.get('provider_name', 'Unknown')
                         }
                     elif pricing:
-                        # Note: this is price per 1k tokens
-                        prompt_price = float(pricing.get('prompt', '0')) * 1000
-                        completion_price = float(pricing.get('completion', '0')) * 1000
+                        prompt_price = float(pricing.get('prompt', '0'))
+                        completion_price = float(pricing.get('completion', '0'))
                         
                         # Check if the model name explicitly indicates it's free
                         is_explicitly_free = model_name and (model_name.endswith(':free') or ':free' in model_name)
@@ -1204,15 +1203,15 @@ def get_model_pricing_info(model_name):
                                 }
                         else:
                             # Format prices for display
-                            if prompt_price < 0.001:
-                                prompt_display = f"${prompt_price:.4f}"
+                            if prompt_price * 1000 < 0.001:
+                                prompt_display = f"${prompt_price * 1000:.4f}"
                             else:
-                                prompt_display = f"${prompt_price:.3f}"
+                                prompt_display = f"${prompt_price * 1000:.3f}"
                                 
-                            if completion_price < 0.001:
-                                completion_display = f"${completion_price:.4f}"
+                            if completion_price * 1000 < 0.001:
+                                completion_display = f"${completion_price * 1000:.4f}"
                             else:
-                                completion_display = f"${completion_price:.3f}"
+                                completion_display = f"${completion_price * 1000:.3f}"
                                 
                             return {
                                 'is_free': False,
@@ -1255,7 +1254,6 @@ def calculate_session_cost(total_prompt_tokens, total_completion_tokens, pricing
     if pricing_info['is_free']:
         return 0.0
     
-    # Convert to cost per 1000 tokens
     prompt_cost = total_prompt_tokens * pricing_info['prompt_price']
     completion_cost = total_completion_tokens * pricing_info['completion_price']
     
@@ -2109,7 +2107,7 @@ def chat_with_model(config, conversation_history=None):
                         else:
                             cost_display = f"${session_cost:.4f}"
                         stats_text += f"[cyan]💰 Session cost:[/cyan] {cost_display}\n"
-                        stats_text += f"[dim]Prompt: ${pricing_info['prompt_price']:.6f}/1K | Completion: ${pricing_info['completion_price']:.6f}/1K[/dim]\n"
+                        stats_text += f"[dim]{pricing_info['display']}[/dim]\n"
                     
                     if response_times:
                         avg_time = sum(response_times) / len(response_times)
