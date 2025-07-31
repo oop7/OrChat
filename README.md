@@ -27,7 +27,8 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - **Interactive Chat**: Enjoy a smooth conversation experience with real-time streaming responses
 - **Rich Markdown Rendering**: View formatted text, code blocks, tables and more directly in your terminal
 - **Performance Analytics**: Track token usage, response times, and total cost for efficiency monitoring
-- **Command Auto-completion**: Enhanced user experience with intelligent command suggestions
+- **Command Auto-completion**: Enhanced user experience with intelligent command suggestions and prompt history navigation
+- **Prompt History Navigation**: Use ↑/↓ arrow keys to navigate through previous prompts and Ctrl+R for history search
 - **Pricing Display**: Real-time pricing information displayed during active chat sessions
 
 </details>
@@ -48,6 +49,24 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - **Multiple Export Formats**: Save conversations as Markdown, HTML, JSON, TXT, or PDF
 - **Smart Context Management**: Automatically manages conversation history to stay within token limits
 - **Customizable Themes**: Choose from different visual themes for your terminal
+
+</details>
+
+<details>
+<summary><strong>⌨️ Interactive Input Features</strong></summary>
+
+- **Command History Navigation**: Press ↑/↓ arrow keys to cycle through previous prompts and commands
+- **History Search**: Use Ctrl+R to search through your prompt history with keywords
+- **Automatic Command Completion**: Start typing "/" and command suggestions appear instantly - no Tab key needed!
+- **Auto-Suggest from History**: Previous commands and prompts appear as grey suggestions as you type
+- **Intelligent Command Detection**: Commands work anywhere in your message with `/attach` and `/upload`
+
+**💡 How Auto-Completion Works:**
+- Type `/` → All available commands appear automatically
+- Type `/c` → Filters to commands starting with 'c' (clear, cls, clear-screen, etc.)
+- Type `/temp` → Shows `/temperature` command
+- Type `/think` → Shows `/thinking` and `/thinking-mode` commands
+- No Tab key required - completions appear as you type!
 
 </details>
 

@@ -37,6 +37,10 @@ try:
     from prompt_toolkit.formatted_text import HTML
     from prompt_toolkit.styles import Style
     from prompt_toolkit.shortcuts import CompleteStyle
+    from prompt_toolkit.history import InMemoryHistory
+    from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.filters import Condition
     HAS_PROMPT_TOOLKIT = True
 except ImportError:
     HAS_PROMPT_TOOLKIT = False
@@ -49,7 +53,7 @@ console = Console()
 
 # Constants for the application
 APP_NAME = "OrChat"
-APP_VERSION = "1.2.5"
+APP_VERSION = "1.2.9"
 REPO_URL = "https://github.com/oop7/OrChat"
 API_URL = "https://api.github.com/repos/oop7/OrChat/releases/latest"
 
@@ -62,6 +66,9 @@ ALLOWED_FILE_EXTENSIONS = {
 
 # Add a new global variable at the top of the file
 last_thinking_content = ""
+
+# Global variable to store command history
+command_history = []
 
 def clear_terminal():
     """Clear the terminal screen"""
@@ -106,11 +113,11 @@ class OrChatCompleter(Completer):
         # Only provide completions if text starts with '/'
         if text.startswith('/'):
             # Get the command part without the '/'
-            command_part = text[1:]
+            command_part = text[1:].lower()
             
-            # Find matching commands
+            # Show all matching commands
             for cmd, description in self.commands.items():
-                if cmd.startswith(command_part.lower()):
+                if cmd.lower().startswith(command_part):
                     yield Completion(
                         cmd,
                         start_position=-len(command_part),
@@ -124,18 +131,70 @@ def create_command_completer():
     
     return OrChatCompleter()
 
-def get_user_input_with_completion():
-    """Get user input with command auto-completion"""
+def get_user_input_with_completion(history=None):
+    """Get user input with command auto-completion and history support"""
     if not HAS_PROMPT_TOOLKIT:
         return input("> ")
     
     try:
         completer = create_command_completer()
         
+        # Use provided history or create a new one
+        if history is None:
+            history = InMemoryHistory()
+        
+        # Create auto-suggest from history
+        auto_suggest = AutoSuggestFromHistory()
+        
+        # Create key bindings for automatic completion
+        bindings = KeyBindings()
+        
+        @bindings.add('/')
+        def _(event):
+            """Auto-trigger completion when '/' is typed"""
+            event.app.current_buffer.insert_text('/')
+            # Force completion menu to show
+            event.app.current_buffer.start_completion()
+        
+        # Add bindings for letters to keep completion active after /
+        for char in 'abcdefghijklmnopqrstuvwxyz':
+            @bindings.add(char)
+            def _(event, char=char):
+                """Keep completion active while typing after /"""
+                event.app.current_buffer.insert_text(char)
+                # Only trigger completion if we're typing after a '/'
+                text = event.app.current_buffer.text
+                if text.startswith('/') and len(text) > 1:
+                    event.app.current_buffer.start_completion()
+        
+        # Add binding for backspace to retrigger completion
+        @bindings.add('backspace')
+        def _(event):
+            """Handle backspace and retrigger completion if needed"""
+            if event.app.current_buffer.text:
+                event.app.current_buffer.delete_before_cursor()
+                # Retrigger completion if we still have / at the start
+                text = event.app.current_buffer.text
+                if text.startswith('/'):
+                    event.app.current_buffer.start_completion()
+        
+        # Add binding for Ctrl+Space to manually trigger completion
+        @bindings.add('c-space')
+        def _(event):
+            """Manually trigger completion"""
+            event.app.current_buffer.start_completion()
+        
         result = prompt(
             "> ",
             completer=completer,
-            complete_while_typing=True
+            complete_while_typing=True,
+            complete_style="multi-column",
+            history=history,
+            auto_suggest=auto_suggest,
+            enable_history_search=True,
+            multiline=False,
+            wrap_lines=True,
+            key_bindings=bindings
         )
         return result
     except (KeyboardInterrupt, EOFError):
@@ -1117,8 +1176,9 @@ def get_model_pricing_info(model_name):
                             'provider': endpoint.get('provider_name', 'Unknown')
                         }
                     elif pricing:
-                        prompt_price = float(pricing.get('prompt', '0'))
-                        completion_price = float(pricing.get('completion', '0'))
+                        # Note: this is price per 1k tokens
+                        prompt_price = float(pricing.get('prompt', '0')) * 1000
+                        completion_price = float(pricing.get('completion', '0')) * 1000
                         
                         # Check if the model name explicitly indicates it's free
                         is_explicitly_free = model_name and (model_name.endswith(':free') or ':free' in model_name)
@@ -1145,14 +1205,14 @@ def get_model_pricing_info(model_name):
                         else:
                             # Format prices for display
                             if prompt_price < 0.001:
-                                prompt_display = f"${prompt_price:.6f}"
-                            else:
                                 prompt_display = f"${prompt_price:.4f}"
+                            else:
+                                prompt_display = f"${prompt_price:.3f}"
                                 
                             if completion_price < 0.001:
-                                completion_display = f"${completion_price:.6f}"
-                            else:
                                 completion_display = f"${completion_price:.4f}"
+                            else:
+                                completion_display = f"${completion_price:.3f}"
                                 
                             return {
                                 'is_free': False,
@@ -1196,8 +1256,8 @@ def calculate_session_cost(total_prompt_tokens, total_completion_tokens, pricing
         return 0.0
     
     # Convert to cost per 1000 tokens
-    prompt_cost = (total_prompt_tokens / 1000) * pricing_info['prompt_price']
-    completion_cost = (total_completion_tokens / 1000) * pricing_info['completion_price']
+    prompt_cost = total_prompt_tokens * pricing_info['prompt_price']
+    completion_cost = total_completion_tokens * pricing_info['completion_price']
     
     return prompt_cost + completion_cost
 
@@ -1800,6 +1860,12 @@ def chat_with_model(config, conversation_history=None):
             {"role": "system", "content": thinking_instruction}
         ]
 
+    # Initialize command history for session
+    if HAS_PROMPT_TOOLKIT:
+        session_history = InMemoryHistory()
+    else:
+        session_history = None
+
     headers = {
         "Authorization": f"Bearer {config['api_key']}",
         "Content-Type": "application/json",
@@ -1880,7 +1946,7 @@ def chat_with_model(config, conversation_history=None):
             
             # Use auto-completion if available, otherwise fallback to regular input
             if HAS_PROMPT_TOOLKIT:
-                user_input = get_user_input_with_completion()
+                user_input = get_user_input_with_completion(session_history)
             else:
                 print("> ", end="")
                 user_input = input()
@@ -1929,7 +1995,12 @@ def chat_with_model(config, conversation_history=None):
                                "/attach or /upload <filepath> - Share a file with the AI (can be used anywhere in your message)"
                     
                     if HAS_PROMPT_TOOLKIT:
-                        help_text += "\n\n[dim]💡 Tip: Press Tab while typing commands for auto-completion with descriptions![/dim]"
+                        help_text += "\n\n[dim]💡 Interactive Features:[/dim]\n"
+                        help_text += "[dim]• Command auto-completion: Type '/' and all commands appear instantly[/dim]\n"
+                        help_text += "[dim]• Continue typing to filter commands (e.g., '/c' shows clear, cls, clear-screen)[/dim]\n"
+                        help_text += "[dim]• Press ↑/↓ arrow keys to navigate through previous prompts[/dim]\n"
+                        help_text += "[dim]• Press Ctrl+R to search through prompt history[/dim]\n"
+                        help_text += "[dim]• Auto-suggestions: Previous prompts appear as grey text while typing[/dim]"
                     
                     console.print(Panel.fit(
                         help_text,
