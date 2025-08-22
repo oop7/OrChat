@@ -7,7 +7,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/orchat?color=86efac&style=for-the-badge&logo=pypi&logoColor=black)](https://badge.fury.io/py/orchat)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981?style=for-the-badge&logo=opensource&logoColor=white)](https://opensource.org/licenses/MIT)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-10b981?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Downloads](https://img.shields.io/pypi/dm/orchat?color=1f2937&style=for-the-badge&logo=download&logoColor=white)](https://pepy.tech/project/orchat)
+[![Downloads](https://img.shields.io/pepy/dt/orchat?color=1f2937&style=for-the-badge&logo=download&logoColor=white)](https://pepy.tech/project/orchat)
 [![GitHub Stars](https://img.shields.io/github/stars/oop7/OrChat?color=86efac&style=for-the-badge&logo=github&logoColor=black)](https://github.com/oop7/OrChat/stargazers)
 
 [🚀 Installation](#installation) • [✨ Features](#features) • [💬 Chat Commands](#chat-commands) • [📁 File Attachment](#file-attachment) • [🧠 Thinking Mode](#thinking-mode) • [⚙️ Configuration](#configuration) • [🔍 Troubleshooting](#troubleshooting) • [🤝 Contributing](#contributing)
@@ -363,3 +363,4 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 - All contributors and users who provide feedback and help improve OrChat
 
 </details>
+
