@@ -6,6 +6,10 @@ on:
       - 'v*'  # Triggers on version tags like v1.2.9, v1.3.0, etc.
   workflow_dispatch:  # Allows manual triggering
 
+permissions:
+  contents: write
+  packages: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -94,12 +98,14 @@ jobs:
         python -m twine upload dist/*
     
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         name: "OrChat ${{ env.TAG_NAME }}"
+        tag_name: "${{ env.TAG_NAME }}"
         files: dist/*
         generate_release_notes: true
         draft: true
         prerelease: false
+        make_latest: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
