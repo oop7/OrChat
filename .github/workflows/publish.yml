@@ -50,17 +50,32 @@ jobs:
         python -m pip install --upgrade pip
         pip install build twine
     
-    - name: Extract version from tag
+    - name: Extract version from tag or use default
       run: |
-        echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
-        echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+          echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        else
+          # For manual triggers, use the version from pyproject.toml
+          VERSION=$(grep 'version = ' pyproject.toml | sed 's/version = "\([^"]*\)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "TAG_NAME=v$VERSION" >> $GITHUB_ENV
+        fi
+        echo "Detected VERSION: $VERSION"
+        echo "Detected TAG_NAME: $TAG_NAME"
     
     - name: Update version in files
       run: |
+        echo "Updating version to: $VERSION"
         # Update setup.py version
-        sed -i 's/version="[^"]*"/version="'$VERSION'"/' setup.py
+        sed -i "s/version=\"[^\"]*\"/version=\"$VERSION\"/" setup.py
         # Update pyproject.toml version
-        sed -i 's/version = "[^"]*"/version = "'$VERSION'"/' pyproject.toml
+        sed -i "s/version = \"[^\"]*\"/version = \"$VERSION\"/" pyproject.toml
+        # Verify the changes
+        echo "setup.py version line:"
+        grep 'version=' setup.py
+        echo "pyproject.toml version line:"
+        grep 'version =' pyproject.toml
     
     - name: Build package
       run: |
