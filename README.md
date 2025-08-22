@@ -12,7 +12,7 @@
 
 [🚀 Installation](#installation) • [✨ Features](#features) • [💬 Chat Commands](#chat-commands) • [📁 File Attachment](#file-attachment) • [🧠 Thinking Mode](#thinking-mode) • [⚙️ Configuration](#configuration) • [🔍 Troubleshooting](#troubleshooting) • [🤝 Contributing](#contributing)
 
-A powerful CLI for chatting with AI models through OpenRouter with streaming responses, token tracking, and extensive customization options.
+A powerful CLI for chatting with AI models through OpenRouter with streaming responses, token tracking, auto-update checking, multi-line input, and extensive customization options.
 
 </div>
 
@@ -26,19 +26,22 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - **Universal Model Access**: Connect to any AI model available on OpenRouter with dynamic model retrieval
 - **Interactive Chat**: Enjoy a smooth conversation experience with real-time streaming responses
 - **Rich Markdown Rendering**: View formatted text, code blocks, tables and more directly in your terminal
-- **Performance Analytics**: Track token usage, response times, and total cost for efficiency monitoring
+- **Performance Analytics**: Track token usage, response times, and total cost for efficiency monitoring (now with accurate API-based token counting)
 - **Command Auto-completion**: Enhanced user experience with intelligent command suggestions and prompt history navigation
 - **Prompt History Navigation**: Use ↑/↓ arrow keys to navigate through previous prompts and Ctrl+R for history search
 - **Pricing Display**: Real-time pricing information displayed during active chat sessions
+- **Auto-Update System**: Automatic update checking at startup with pip integration
+- **Multi-line Input Support**: Compose multi-paragraph messages with `Esc+Enter` and visual feedback
 
 </details>
 
 <details>
 <summary><strong>📎 File & Media Support</strong></summary>
 
+- **Smart File Picker**: Attach files anywhere in your message using `#` (e.g., `analyze #myfile.py`)
+- **Interactive File Browser**: Browse files with icons, sizes, and directory navigation in a popup interface
 - **Multimodal Support**: Share images and various file types with compatible AI models
 - **Enhanced File Processing**: Improved file attachment with better error handling and path support
-- **File Attachment Support**: Share files of various types with the AI for analysis
 
 </details>
 
@@ -55,11 +58,12 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 <details>
 <summary><strong>⌨️ Interactive Input Features</strong></summary>
 
+- **Multi-line Input**: Use `Esc+Enter` to toggle multi-line mode, with status indicator and seamless toggling
 - **Command History Navigation**: Press ↑/↓ arrow keys to cycle through previous prompts and commands
 - **History Search**: Use Ctrl+R to search through your prompt history with keywords
 - **Automatic Command Completion**: Start typing "/" and command suggestions appear instantly - no Tab key needed!
 - **Auto-Suggest from History**: Previous commands and prompts appear as grey suggestions as you type
-- **Intelligent Command Detection**: Commands work anywhere in your message with `/attach` and `/upload`
+- **Intelligent File Picker**: Use `#` anywhere in your message for file selection with auto-completion and browser popup
 
 **💡 How Auto-Completion Works:**
 - Type `/` → All available commands appear automatically
@@ -67,6 +71,12 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - Type `/temp` → Shows `/temperature` command
 - Type `/think` → Shows `/thinking` and `/thinking-mode` commands
 - No Tab key required - completions appear as you type!
+
+**💡 How File Picker Works:**
+- Type `#` anywhere in your message to open the file picker
+- Choose files interactively (with icons for file types)
+- Insert filenames naturally into your prompt, e.g., `examine #test.py and check for errors`
+- File picker works anywhere in your message, not just at the beginning
 
 </details>
 
@@ -215,12 +225,11 @@ THINKING_MODE = False
 | `/model`                  | Change the AI model                                   |
 | `/temperature <0.0-2.0>`  | Adjust temperature setting                            |
 | `/system`                 | View or change system instructions                    |
-| `/tokens`                 | Show token usage statistics                           |
+| `/tokens`                 | Show token usage statistics (now API-accurate)        |
 | `/speed`                  | Show response time statistics                         |
 | `/theme <theme>`          | Change the color theme (default, dark, light, hacker) |
 | `/thinking`               | Show last AI thinking process                         |
 | `/thinking-mode`          | Toggle thinking mode on/off                           |
-| `/attach` or `/upload`    | Share a file with the AI (can be used anywhere in your message) |
 | `/about`                  | Show information about OrChat                         |
 | `/update`                 | Check for updates                                     |
 | `/settings`               | View current settings                                 |
@@ -231,20 +240,21 @@ THINKING_MODE = False
 <details>
 <summary><strong>📎 Basic Usage</strong></summary>
 
-Share files with the AI for analysis using the enhanced attachment system:
+Attach files naturally in your messages using the smart file picker:
 
 ```
-/attach path/to/your/file.ext
-/upload path/to/your/file.ext
+analyze #path/to/your/file.ext for issues
+examine #script.py and explain its logic
 ```
+- Use `#` anywhere in your message to open the file picker popup
 
 </details>
 
 <details>
 <summary><strong>✨ Enhanced Features</strong></summary>
 
-- **Flexible Command Usage**: `/upload` and `/attach` can be used anywhere in your message, not just at the beginning
-- **Quoted Path Support**: Handles file paths with spaces using quotes (`/attach "C:\path with spaces\file.txt"`)
+- **Intelligent File Picker**: Auto-completion, icons, file sizes, and directory navigation
+- **Quoted Path Support**: Handles file paths with spaces using quotes
 - **Better Error Handling**: Improved error messages and usage examples
 - **File Preview**: Shows file metadata and preview before processing
 - **Security Validation**: Built-in file size and type validation (10MB limit)
