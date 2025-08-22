@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "orchat"
+version = "1.2.9"
+authors = [
+    {name = "oop7", email = "oop7_support@proton.me"},
+]
+description = "A powerful CLI for chatting with AI models through OpenRouter"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+keywords = ["ai", "chat", "cli", "openrouter", "chatbot"]
+dependencies = [
+    "requests",
+    "tiktoken",
+    "rich",
+    "python-dotenv", 
+    "colorama",
+    "packaging",
+    "pyfzf",
+    "cryptography",
+    "prompt_toolkit",
+]
+
+[project.scripts]
+orchat = "main:main"
+
+[project.urls]
+Homepage = "https://github.com/oop7/OrChat"
+Repository = "https://github.com/oop7/OrChat"
+"Bug Tracker" = "https://github.com/oop7/OrChat/issues"
+Reddit = "https://www.reddit.com/r/NO-N_A_M_E/"
+
+[tool.setuptools]
+py-modules = ["main"]
