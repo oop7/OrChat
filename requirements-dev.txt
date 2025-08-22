@@ -1,0 +1,17 @@
+# Development and testing dependencies
+pytest>=6.0
+pytest-cov
+black
+flake8
+isort
+
+# Build and publishing tools
+build
+twine
+setuptools
+
+# Development tools
+pre-commit
+
+# Install runtime dependencies
+-r requirements.txt
