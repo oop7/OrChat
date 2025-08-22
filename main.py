@@ -1,135 +1,266 @@
-import json
-import os
-import time
+# Standard library imports
 import argparse
-import sys
+import base64
 import configparser
 import datetime
-import tempfile
-import subprocess
-import re
-import base64
-import webbrowser
-import urllib.request
-from collections import Counter
-from cryptography.fernet import Fernet
 import getpass
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+import webbrowser
+from collections import Counter
 
+# Third-party imports
 import colorama
 import requests
 import tiktoken
+from cryptography.fernet import Fernet
 from dotenv import load_dotenv
+from packaging import version
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
-from rich.markdown import Markdown
-from packaging import version
 
+# Optional dependencies with graceful fallbacks
 try:
-    from pyfzf.pyfzf import FzfPrompt  # type: ignore
-    HAS_FZF=True
+    from pyfzf.pyfzf import FzfPrompt
+    HAS_FZF = True
 except ImportError:
-    HAS_FZF=False
+    HAS_FZF = False
 
 try:
     from prompt_toolkit import prompt
-    from prompt_toolkit.completion import WordCompleter, Completion, Completer
-    from prompt_toolkit.formatted_text import HTML
-    from prompt_toolkit.styles import Style
-    from prompt_toolkit.shortcuts import CompleteStyle
-    from prompt_toolkit.history import InMemoryHistory
     from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.completion import Completer, Completion, WordCompleter
     from prompt_toolkit.filters import Condition
+    from prompt_toolkit.formatted_text import HTML
+    from prompt_toolkit.history import InMemoryHistory
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.shortcuts import CompleteStyle
+    from prompt_toolkit.styles import Style
     HAS_PROMPT_TOOLKIT = True
 except ImportError:
     HAS_PROMPT_TOOLKIT = False
 
-# Initialize colorama for cross-platform colored terminal output
+# Initialize cross-platform support
 colorama.init()
 
-# Initialize Rich console
-console = Console()
+# ============================================================================
+# APPLICATION CONSTANTS
+# ============================================================================
 
-# Constants for the application
+# App metadata
 APP_NAME = "OrChat"
-APP_VERSION = "1.2.9"
+APP_VERSION = "1.3.0"
 REPO_URL = "https://github.com/oop7/OrChat"
 API_URL = "https://api.github.com/repos/oop7/OrChat/releases/latest"
 
-# Security constants
+# Security & file constraints
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB limit
 ALLOWED_FILE_EXTENSIONS = {
-    '.txt', '.md', '.py', '.js', '.java', '.cpp', '.c', '.cs', '.go', '.rb', '.php', '.ts', '.swift',
-    '.json', '.xml', '.html', '.css', '.csv', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'
+    # Text files
+    '.txt', '.md', '.json', '.xml', '.csv',
+    # Code files  
+    '.py', '.js', '.ts', '.java', '.cpp', '.c', '.cs', '.go', '.rb', '.php', '.swift',
+    # Web files
+    '.html', '.css',
+    # Image files
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'
 }
 
-# Add a new global variable at the top of the file
+# Global state
+console = Console()
 last_thinking_content = ""
-
-# Global variable to store command history
 command_history = []
 
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
 def clear_terminal():
-    """Clear the terminal screen"""
-    # Use a cross-platform approach for clearing the terminal
+    """Clear the terminal screen using ANSI escape codes."""
     print("\x1b[2J\x1b[H")
 
+def format_time_delta(delta_seconds: float) -> str:
+    """Format time delta into human-readable string."""
+    if delta_seconds < 1:
+        return f"{delta_seconds*1000:.0f}ms"
+    elif delta_seconds < 60:
+        return f"{delta_seconds:.1f}s"
+    else:
+        mins, secs = divmod(delta_seconds, 60)
+        return f"{int(mins)}m {secs:.1f}s"
+
+def format_file_size(size_bytes: int) -> str:
+    """Format file size into human-readable string."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} TB"
+
+# ============================================================================
+# COMPLETION CLASSES
+# ============================================================================
+
 class OrChatCompleter(Completer):
-    """Custom completer for OrChat commands with descriptions"""
+    """Optimized command completer with descriptions."""
+    
+    # Static command definitions for better performance
+    COMMANDS = {
+        'clear': 'Clear the screen and conversation history',
+        'chat': 'Manage conversation history. Usage: /chat <list|save|resume> <tag>',
+        'exit': 'Exit the chat',
+        'quit': 'Exit the chat', 
+        'new': 'Start a new conversation',
+        'cls': 'Clear terminal screen',
+        'clear-screen': 'Clear terminal screen',
+        'save': 'Save conversation to file',
+        'settings': 'Adjust model settings',
+        'tokens': 'Show token usage statistics',
+        'model': 'Change the AI model',
+        'temperature': 'Adjust temperature (0.0-2.0)',
+        'system': 'View or change system instructions',
+        'speed': 'Show response time statistics',
+        'theme': 'Change the color theme',
+        'about': 'Show information about OrChat',
+        'update': 'Check for updates',
+        'thinking': 'Show last AI thinking process',
+        'thinking-mode': 'Toggle thinking mode on/off',
+        'help': 'Show available commands'
+    }
+    
+    def get_completions(self, document, complete_event):
+        """Generate command completions efficiently."""
+        text = document.text_before_cursor
+        if not text.startswith('/'):
+            return
+            
+        command_part = text[1:].lower()
+        for cmd, description in self.COMMANDS.items():
+            if cmd.startswith(command_part):
+                yield Completion(
+                    cmd,
+                    start_position=-len(command_part),
+                    display_meta=description
+                )
+
+class FilePickerCompleter(Completer):
+    """Optimized file picker completer for # symbol."""
+    
+    # File type icons (static for performance)
+    FILE_ICONS = {
+        '.py': '🐍', '.js': '📜', '.ts': '📜', '.java': '☕', '.cpp': '⚙️', '.c': '⚙️',
+        '.cs': '💙', '.go': '🐹', '.rb': '💎', '.php': '🐘', '.swift': '🍃',
+        '.txt': '📄', '.md': '📝', '.json': '📋', '.xml': '📋', '.html': '🌐',
+        '.css': '🎨', '.csv': '📊', '.jpg': '🖼️', '.jpeg': '🖼️', '.png': '🖼️',
+        '.gif': '🖼️', '.webp': '🖼️', '.bmp': '🖼️'
+    }
+    
+    def get_files_in_directory(self, directory: str = ".", filter_text: str = "") -> list:
+        """Get filtered files with size checking and icons."""
+        try:
+            files = []
+            full_path = os.path.abspath(directory)
+            if not os.path.exists(full_path):
+                return files
+                
+            for item in os.listdir(full_path):
+                # Skip hidden files unless specifically requested
+                if item.startswith('.') and not filter_text.startswith('.'):
+                    continue
+                # Apply case-insensitive filter
+                if filter_text and filter_text.lower() not in item.lower():
+                    continue
+                
+                item_path = os.path.join(full_path, item)
+                
+                if os.path.isfile(item_path):
+                    file_ext = os.path.splitext(item)[1].lower()
+                    if file_ext in ALLOWED_FILE_EXTENSIONS:
+                        file_size = os.path.getsize(item_path)
+                        icon = self.FILE_ICONS.get(file_ext, '📄')
+                        size_str = format_file_size(file_size)
+                        
+                        if file_size > MAX_FILE_SIZE:
+                            display = f"{icon} {item} ({size_str}) [TOO LARGE]"
+                            files.append((item, display, False))
+                        else:
+                            display = f"{icon} {item} ({size_str})"
+                            files.append((item, display, True))
+                            
+                elif os.path.isdir(item_path):
+                    files.append((item + "/", f"📁 {item}/", True))
+                    
+            # Sort: directories first, then files alphabetically
+            files.sort(key=lambda x: (not x[0].endswith('/'), x[0].lower()))
+            return files
+            
+        except (OSError, PermissionError):
+            return []
+    
+    def get_completions(self, document, complete_event):
+        """Generate file completions for # symbol anywhere in text."""
+        text = document.text
+        cursor_pos = document.cursor_position
+        text_before = text[:cursor_pos]
+        hash_index = text_before.rfind('#')
+        
+        if hash_index == -1:
+            return
+            
+        path_part = text_before[hash_index + 1:]
+        # Stop if whitespace found (separate word)
+        if ' ' in path_part or '\t' in path_part:
+            return
+        
+        # Parse directory and filter
+        if '/' in path_part:
+            directory = os.path.dirname(path_part)
+            filter_text = os.path.basename(path_part)
+        else:
+            directory = "."
+            filter_text = path_part
+        
+        # Generate completions
+        for filename, display_text, selectable in self.get_files_in_directory(directory, filter_text):
+            if selectable:
+                completion = f"{directory}/{filename}" if directory != "." else filename
+                yield Completion(
+                    completion,
+                    start_position=-len(path_part),
+                    display=display_text
+                )
+
+class CombinedCompleter(Completer):
+    """Efficient combined completer for commands and files."""
     
     def __init__(self):
-        # Define all available commands with their descriptions
-        self.commands = {
-            'clear': 'Clear the screen and conversation history',
-            'chat': 'Manage conversation history. Usage: /chat <list|save|resume> <tag>',
-            'compress': 'Compresses the context by replacing it with a summary.',
-            'exit': 'Exit the chat',
-            'quit': 'Exit the chat', 
-            'new': 'Start a new conversation',
-            'cls': 'Clear terminal screen',
-            'clear-screen': 'Clear terminal screen',
-            'save': 'Save conversation to file',
-            'settings': 'Adjust model settings',
-            'tokens': 'Show token usage statistics',
-            'model': 'Change the AI model',
-            'temperature': 'Adjust temperature (0.0-2.0)',
-            'system': 'View or change system instructions',
-            'speed': 'Show response time statistics',
-            'theme': 'Change the color theme',
-            'about': 'Show information about OrChat',
-            'update': 'Check for updates',
-            'thinking': 'Show last AI thinking process',
-            'thinking-mode': 'Toggle thinking mode on/off',
-            'attach': 'Share a file with the AI',
-            'upload': 'Share a file with the AI',
-            'help': 'Show available commands'
-        }
-        
+        self.command_completer = OrChatCompleter()
+        self.file_completer = FilePickerCompleter()
+    
     def get_completions(self, document, complete_event):
-        """Generate completions for the current input"""
-        text = document.text_before_cursor
+        """Route to appropriate completer based on context."""
+        text = document.text
+        cursor_pos = document.cursor_position
         
-        # Only provide completions if text starts with '/'
         if text.startswith('/'):
-            # Get the command part without the '/'
-            command_part = text[1:].lower()
-            
-            # Show all matching commands
-            for cmd, description in self.commands.items():
-                if cmd.lower().startswith(command_part):
-                    yield Completion(
-                        cmd,
-                        start_position=-len(command_part),
-                        display_meta=description
-                    )
+            yield from self.command_completer.get_completions(document, complete_event)
+        elif '#' in text[:cursor_pos]:
+            yield from self.file_completer.get_completions(document, complete_event)
 
 def create_command_completer():
-    """Create a command completer for OrChat"""
+    """Create a combined completer for OrChat"""
     if not HAS_PROMPT_TOOLKIT:
         return None
     
-    return OrChatCompleter()
+    return CombinedCompleter()
 
 def get_user_input_with_completion(history=None):
     """Get user input with command auto-completion and history support"""
@@ -146,8 +277,18 @@ def get_user_input_with_completion(history=None):
         # Create auto-suggest from history
         auto_suggest = AutoSuggestFromHistory()
         
-        # Create key bindings for automatic completion
+        # Create key bindings for automatic completion and multiline support
         bindings = KeyBindings()
+        
+        # Track multiline mode
+        multiline_mode = [False]  # Use list to allow modification in nested functions
+        
+        @bindings.add('#')
+        def _(event):
+            """Auto-trigger file picker completion when '#' is typed"""
+            event.app.current_buffer.insert_text('#')
+            # Force completion menu to show
+            event.app.current_buffer.start_completion()
         
         @bindings.add('/')
         def _(event):
@@ -156,16 +297,29 @@ def get_user_input_with_completion(history=None):
             # Force completion menu to show
             event.app.current_buffer.start_completion()
         
-        # Add bindings for letters to keep completion active after /
-        for char in 'abcdefghijklmnopqrstuvwxyz':
+        # Add bindings for letters to keep completion active after / or #
+        for char in 'abcdefghijklmnopqrstuvwxyz.-_0123456789':
             @bindings.add(char)
             def _(event, char=char):
-                """Keep completion active while typing after /"""
+                """Keep completion active while typing after / or #"""
                 event.app.current_buffer.insert_text(char)
-                # Only trigger completion if we're typing after a '/'
+                # Trigger completion if we're typing after a '/' or have '#' in the text
                 text = event.app.current_buffer.text
+                cursor_pos = event.app.current_buffer.cursor_position
+                
+                # Check for command completion
                 if text.startswith('/') and len(text) > 1:
                     event.app.current_buffer.start_completion()
+                # Check for file picker completion (# anywhere before cursor)
+                elif '#' in text[:cursor_pos]:
+                    # Find the last # before cursor
+                    text_before_cursor = text[:cursor_pos]
+                    hash_index = text_before_cursor.rfind('#')
+                    if hash_index != -1:
+                        # Check if we're still in the file path (no spaces after #)
+                        path_part = text_before_cursor[hash_index + 1:]
+                        if ' ' not in path_part and '\t' not in path_part:
+                            event.app.current_buffer.start_completion()
         
         # Add binding for backspace to retrigger completion
         @bindings.add('backspace')
@@ -173,10 +327,21 @@ def get_user_input_with_completion(history=None):
             """Handle backspace and retrigger completion if needed"""
             if event.app.current_buffer.text:
                 event.app.current_buffer.delete_before_cursor()
-                # Retrigger completion if we still have / at the start
+                # Retrigger completion if we still have / at start or # anywhere
                 text = event.app.current_buffer.text
+                cursor_pos = event.app.current_buffer.cursor_position
+                
                 if text.startswith('/'):
                     event.app.current_buffer.start_completion()
+                elif '#' in text[:cursor_pos]:
+                    # Find the last # before cursor
+                    text_before_cursor = text[:cursor_pos]
+                    hash_index = text_before_cursor.rfind('#')
+                    if hash_index != -1:
+                        # Check if we're still in the file path (no spaces after #)
+                        path_part = text_before_cursor[hash_index + 1:]
+                        if ' ' not in path_part and '\t' not in path_part:
+                            event.app.current_buffer.start_completion()
         
         # Add binding for Ctrl+Space to manually trigger completion
         @bindings.add('c-space')
@@ -184,15 +349,34 @@ def get_user_input_with_completion(history=None):
             """Manually trigger completion"""
             event.app.current_buffer.start_completion()
         
+        # Add binding for Esc+Enter to toggle multiline mode
+        @bindings.add('escape', 'enter')
+        def _(event):
+            """Toggle multiline mode with Esc+Enter"""
+            multiline_mode[0] = not multiline_mode[0]
+            if multiline_mode[0]:
+                event.app.current_buffer.insert_text('\n')
+                # Show indicator that we're in multiline mode
+                event.app.invalidate()
+            else:
+                # Exit multiline mode and submit
+                event.app.exit(result=event.app.current_buffer.text)
+        
+        # Custom prompt function to show multiline indicator
+        def get_prompt():
+            if multiline_mode[0]:
+                return HTML('> <style fg="yellow">[Multi-line] </style>')
+            return "> "
+        
         result = prompt(
-            "> ",
+            get_prompt,
             completer=completer,
             complete_while_typing=True,
             complete_style="multi-column",
             history=history,
             auto_suggest=auto_suggest,
             enable_history_search=True,
-            multiline=False,
+            multiline=Condition(lambda: multiline_mode[0]),
             wrap_lines=True,
             key_bindings=bindings
         )
@@ -204,57 +388,56 @@ def get_user_input_with_completion(history=None):
         print(f"[Auto-completion error: {e}]")
         return input("> ")
 
-def generate_key():
-    """Generate a key for encryption"""
+# ============================================================================
+# SECURITY & CONFIGURATION MANAGEMENT
+# ============================================================================
+
+def generate_key() -> bytes:
+    """Generate a key for encryption."""
     return Fernet.generate_key()
 
-def encrypt_api_key(api_key, key):
-    """Encrypt API key using Fernet symmetric encryption"""
-    f = Fernet(key)
-    encrypted_key = f.encrypt(api_key.encode())
-    return encrypted_key
+def encrypt_api_key(api_key: str, key: bytes) -> bytes:
+    """Encrypt API key using Fernet symmetric encryption."""
+    return Fernet(key).encrypt(api_key.encode())
 
-def decrypt_api_key(encrypted_key, key):
-    """Decrypt API key using Fernet symmetric encryption"""
+def decrypt_api_key(encrypted_key: bytes, key: bytes) -> str:
+    """Decrypt API key using Fernet symmetric encryption."""
     try:
-        f = Fernet(key)
-        decrypted_key = f.decrypt(encrypted_key)
-        return decrypted_key.decode()
+        return Fernet(key).decrypt(encrypted_key).decode()
     except Exception:
         return None
 
-def get_or_create_master_key():
-    """Get or create master encryption key"""
+def get_or_create_master_key() -> bytes:
+    """Get or create master encryption key with secure file permissions."""
     key_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.key')
     
     if os.path.exists(key_file):
         with open(key_file, 'rb') as f:
             return f.read()
-    else:
-        key = generate_key()
-        # Set restrictive file permissions (Windows compatible)
-        with open(key_file, 'wb') as f:
-            f.write(key)
-        
-        # Set file permissions to be readable only by owner (Unix-like systems)
-        if os.name != 'nt':  # Not Windows
-            os.chmod(key_file, 0o600)
-        
-        return key
+    
+    # Create new key with secure permissions
+    key = generate_key()
+    with open(key_file, 'wb') as f:
+        f.write(key)
+    
+    # Set restrictive permissions on Unix-like systems
+    if os.name != 'nt':
+        os.chmod(key_file, 0o600)
+    
+    return key
 
-def validate_api_key_format(api_key):
-    """Validate API key format"""
+def validate_api_key_format(api_key: str) -> bool:
+    """Validate API key format and warn about incorrect format."""
     if not api_key or len(api_key) < 20:
         return False
     
-    # OpenRouter keys typically start with 'sk-or-'
     if not api_key.startswith('sk-or-'):
         console.print("[yellow]Warning: API key doesn't match expected OpenRouter format[/yellow]")
     
     return True
 
-def secure_input_api_key():
-    """Securely input API key without echoing to console"""
+def secure_input_api_key() -> str:
+    """Securely input API key without echoing to console."""
     try:
         api_key = getpass.getpass("Enter your OpenRouter API key (input hidden): ")
         if not validate_api_key_format(api_key):
@@ -265,54 +448,14 @@ def secure_input_api_key():
         console.print("\n[yellow]API key input cancelled[/yellow]")
         return None
 
-def load_config():
-    """Load configuration from .env file and/or config.ini"""
-    # First try to load from .env file
+def load_config() -> dict:
+    """Load configuration from .env file and/or config.ini with optimized handling."""
+    # Load from environment first
     load_dotenv()
     api_key = os.getenv("OPENROUTER_API_KEY")
 
-    # Then try config.ini (overrides .env if both exist)
-    config = configparser.ConfigParser()
-    config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.ini')
-
-    if os.path.exists(config_file):
-        config.read(config_file)
-        if 'API' in config:
-            # Try to load encrypted API key first
-            if 'OPENROUTER_API_KEY_ENCRYPTED' in config['API']:
-                try:
-                    encrypted_key_b64 = config['API']['OPENROUTER_API_KEY_ENCRYPTED']
-                    encrypted_key = base64.b64decode(encrypted_key_b64)
-                    master_key = get_or_create_master_key()
-                    decrypted_key = decrypt_api_key(encrypted_key, master_key)
-                    if decrypted_key:
-                        api_key = decrypted_key
-                    else:
-                        console.print("[yellow]Warning: Could not decrypt API key. Please re-enter it.[/yellow]")
-                except Exception as e:
-                    console.print(f"[yellow]Warning: Error decrypting API key: {str(e)}[/yellow]")
-            
-            # Fallback to plaintext API key
-            elif 'OPENROUTER_API_KEY' in config['API'] and config['API']['OPENROUTER_API_KEY']:
-                api_key = config['API']['OPENROUTER_API_KEY']
-
-        # Load other settings if available
-        if 'SETTINGS' in config:
-            settings = config['SETTINGS']
-            return {
-                'api_key': api_key,
-                'model': settings.get('MODEL', ""),
-                'temperature': settings.getfloat('TEMPERATURE', 0.7),
-                'system_instructions': settings.get('SYSTEM_INSTRUCTIONS', ""),
-                'theme': settings.get('THEME', 'default'),
-                'max_tokens': settings.getint('MAX_TOKENS', 0),
-                'autosave_interval': settings.getint('AUTOSAVE_INTERVAL', 300),
-                'streaming': settings.getboolean('STREAMING', True),
-                'thinking_mode': settings.getboolean('THINKING_MODE', False)  # Changed default to False
-            }
-
-    # Return defaults if no config file
-    return {
+    # Default configuration
+    defaults = {
         'api_key': api_key,
         'model': "",
         'temperature': 0.7,
@@ -321,28 +464,68 @@ def load_config():
         'max_tokens': 0,
         'autosave_interval': 300,
         'streaming': True,
-        'thinking_mode': False  # Changed default to False
+        'thinking_mode': False
     }
 
-def save_config(config_data):
-    """Save configuration to config.ini file with encrypted API key"""
+    # Try to load from config.ini
+    config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.ini')
+    if not os.path.exists(config_file):
+        return defaults
+
+    config = configparser.ConfigParser()
+    config.read(config_file)
+
+    # Load API key (encrypted or plaintext)
+    if 'API' in config:
+        if 'OPENROUTER_API_KEY_ENCRYPTED' in config['API']:
+            try:
+                encrypted_key_b64 = config['API']['OPENROUTER_API_KEY_ENCRYPTED']
+                encrypted_key = base64.b64decode(encrypted_key_b64)
+                master_key = get_or_create_master_key()
+                decrypted_key = decrypt_api_key(encrypted_key, master_key)
+                if decrypted_key:
+                    defaults['api_key'] = decrypted_key
+                else:
+                    console.print("[yellow]Warning: Could not decrypt API key. Please re-enter it.[/yellow]")
+            except Exception as e:
+                console.print(f"[yellow]Warning: Error decrypting API key: {e}[/yellow]")
+        elif 'OPENROUTER_API_KEY' in config['API'] and config['API']['OPENROUTER_API_KEY']:
+            defaults['api_key'] = config['API']['OPENROUTER_API_KEY']
+
+    # Load settings
+    if 'SETTINGS' in config:
+        settings = config['SETTINGS']
+        defaults.update({
+            'model': settings.get('MODEL', ''),
+            'temperature': settings.getfloat('TEMPERATURE', 0.7),
+            'system_instructions': settings.get('SYSTEM_INSTRUCTIONS', ''),
+            'theme': settings.get('THEME', 'default'),
+            'max_tokens': settings.getint('MAX_TOKENS', 0),
+            'autosave_interval': settings.getint('AUTOSAVE_INTERVAL', 300),
+            'streaming': settings.getboolean('STREAMING', True),
+            'thinking_mode': settings.getboolean('THINKING_MODE', False)
+        })
+
+    return defaults
+
+def save_config(config_data: dict) -> None:
+    """Save configuration to config.ini with encrypted API key."""
     config = configparser.ConfigParser()
     
-    # Handle API key encryption if not in environment
+    # Handle API key encryption
     if 'OPENROUTER_API_KEY' not in os.environ and config_data.get('api_key'):
         try:
-            # Encrypt the API key before saving
             master_key = get_or_create_master_key()
             encrypted_key = encrypt_api_key(config_data['api_key'], master_key)
-            # Store as base64 for config file compatibility
             encrypted_key_b64 = base64.b64encode(encrypted_key).decode('utf-8')
             config['API'] = {'OPENROUTER_API_KEY_ENCRYPTED': encrypted_key_b64}
         except Exception as e:
-            console.print(f"[yellow]Warning: Could not encrypt API key: {str(e)}. Saving in plaintext.[/yellow]")
+            console.print(f"[yellow]Warning: Could not encrypt API key: {e}. Saving in plaintext.[/yellow]")
             config['API'] = {'OPENROUTER_API_KEY': config_data['api_key']}
     elif 'OPENROUTER_API_KEY' not in os.environ:
         config['API'] = {'OPENROUTER_API_KEY': config_data['api_key']}
     
+    # Save settings
     config['SETTINGS'] = {
         'MODEL': config_data['model'],
         'TEMPERATURE': str(config_data['temperature']),
@@ -360,9 +543,12 @@ def save_config(config_data):
         with open(config_file, 'w', encoding="utf-8") as f:
             config.write(f)
         
-        # Set restrictive permissions on config file (Unix-like systems)
-        if os.name != 'nt':  # Not Windows
+        # Set restrictive permissions on Unix-like systems
+        if os.name != 'nt':
             os.chmod(config_file, 0o600)
+            
+    except Exception as e:
+        console.print(f"[red]Error saving configuration: {e}[/red]")
         
         console.print("[green]Configuration saved successfully![/green]")
     except Exception as e:
@@ -1165,42 +1351,29 @@ def get_model_pricing_info(model_name):
                     # Check if the model name explicitly indicates it's free
                     is_explicitly_free = model_name and (model_name.endswith(':free') or ':free' in model_name)
                     
-                    # Only trust is_free flag if the model name explicitly indicates it's free
-                    # This prevents cases where the API incorrectly marks paid models as free
-                    if is_explicitly_free and api_is_free:
+                    # For explicitly free models, always return free pricing regardless of API data
+                    if is_explicitly_free:
                         return {
                             'is_free': True,
                             'prompt_price': 0.0,
                             'completion_price': 0.0,
-                            'display': 'FREE',
+                            'display': 'FREE (OpenRouter)',
                             'provider': endpoint.get('provider_name', 'Unknown')
                         }
                     elif pricing:
                         prompt_price = float(pricing.get('prompt', '0'))
                         completion_price = float(pricing.get('completion', '0'))
                         
-                        # Check if the model name explicitly indicates it's free
-                        is_explicitly_free = model_name and (model_name.endswith(':free') or ':free' in model_name)
-                        
                         if prompt_price == 0 and completion_price == 0:
-                            if is_explicitly_free:
-                                return {
-                                    'is_free': True,
-                                    'prompt_price': 0.0,
-                                    'completion_price': 0.0,
-                                    'display': 'FREE',
-                                    'provider': endpoint.get('provider_name', 'Unknown')
-                                }
-                            else:
-                                # Model has 0 pricing but may still require credits
-                                # Don't trust 0-pricing for non-explicit free models
-                                return {
-                                    'is_free': False,
-                                    'prompt_price': 0.0,
-                                    'completion_price': 0.0,
-                                    'display': 'Requires credits',
-                                    'provider': endpoint.get('provider_name', 'Unknown')
-                                }
+                            # Model has 0 pricing but may still require credits
+                            # Don't trust 0-pricing for non-explicit free models
+                            return {
+                                'is_free': False,
+                                'prompt_price': 0.0,
+                                'completion_price': 0.0,
+                                'display': 'Requires credits',
+                                'provider': endpoint.get('provider_name', 'Unknown')
+                            }
                         else:
                             # Format prices for display
                             if prompt_price * 1000 < 0.001:
@@ -1410,6 +1583,8 @@ def stream_response(response, start_time, thinking_mode=False):
     # For thinking detection
     thinking_content = ""
     in_thinking = False
+    # For capturing usage information
+    usage_info = None
 
     # Create a temporary file to collect all content
     # This avoids terminal display issues
@@ -1436,6 +1611,11 @@ def stream_response(response, start_time, thinking_mode=False):
 
             try:
                 chunk_data = json.loads(chunk_text)
+                
+                # Capture usage information if present
+                if 'usage' in chunk_data:
+                    usage_info = chunk_data['usage']
+                
                 if 'choices' in chunk_data and chunk_data['choices']:
                     delta = chunk_data['choices'][0].get('delta', {})
                     content = delta.get('content', delta.get('text', ''))
@@ -1527,7 +1707,7 @@ def stream_response(response, start_time, thinking_mode=False):
         console.print("Hello! I'm here to help you.")
 
     response_time = time.time() - start_time
-    return cleaned_content, response_time
+    return cleaned_content, response_time, usage_info
 
 def save_conversation(conversation_history, filename, fmt="markdown"):
     """Save conversation to file in various formats"""
@@ -1803,9 +1983,10 @@ def show_about():
     ))
 
 # Add this function to check for updates
-def check_for_updates():
+def check_for_updates(silent=False):
     """Check GitHub for newer versions of OrChat"""
-    console.print("[bold cyan]Checking for updates...[/bold cyan]")
+    if not silent:
+        console.print("[bold cyan]Checking for updates...[/bold cyan]")
     try:
         with urllib.request.urlopen(API_URL) as response:
             if response.getcode() == 200:
@@ -1822,16 +2003,44 @@ def check_for_updates():
                         border_style="yellow"
                     ))
 
-                    open_browser = Prompt.ask("Open release page in browser?", choices=["y", "n"], default="n")
-                    if open_browser.lower() == "y":
-                        webbrowser.open(f"{REPO_URL}/releases")
+                    if silent:
+                        update_choice = Prompt.ask("Would you like to update now?", choices=["y", "n"], default="n")
+                        if update_choice.lower() == "y":
+                            try:
+                                console.print("[cyan]Attempting to update via pip...[/cyan]")
+                                result = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "orchat"], 
+                                                      capture_output=True, text=True)
+                                if result.returncode == 0:
+                                    console.print("[green]Update successful! Please restart OrChat.[/green]")
+                                    sys.exit(0)
+                                else:
+                                    console.print(f"[yellow]Update failed: {result.stderr}[/yellow]")
+                                    open_browser = Prompt.ask("Open release page for manual update?", choices=["y", "n"], default="y")
+                                    if open_browser.lower() == "y":
+                                        webbrowser.open(f"{REPO_URL}/releases")
+                            except Exception as e:
+                                console.print(f"[yellow]Auto-update failed: {str(e)}[/yellow]")
+                                open_browser = Prompt.ask("Open release page for manual update?", choices=["y", "n"], default="y")
+                                if open_browser.lower() == "y":
+                                    webbrowser.open(f"{REPO_URL}/releases")
+                    else:
+                        open_browser = Prompt.ask("Open release page in browser?", choices=["y", "n"], default="n")
+                        if open_browser.lower() == "y":
+                            webbrowser.open(f"{REPO_URL}/releases")
+                    return True  # Update available
                 else:
-                    console.print("[green]You are using the latest version of OrChat![/green]")
+                    if not silent:
+                        console.print("[green]You are using the latest version of OrChat![/green]")
+                    return False  # No update available
             else:
-                console.print("[yellow]Could not check for updates. Server returned status "
-                            f"code {response.getcode()}[/yellow]")
+                if not silent:
+                    console.print("[yellow]Could not check for updates. Server returned status "
+                                f"code {response.getcode()}[/yellow]")
+                return False
     except Exception as e:
-        console.print(f"[yellow]Could not check for updates: {str(e)}[/yellow]")
+        if not silent:
+            console.print(f"[yellow]Could not check for updates: {str(e)}[/yellow]")
+        return False
 
 
 
@@ -1949,23 +2158,135 @@ def chat_with_model(config, conversation_history=None):
                 print("> ", end="")
                 user_input = input()
 
-            # Handle special commands
-            # Check if input starts with a command OR contains /upload or /attach
-            if user_input.startswith('/') or '/upload' in user_input or '/attach' in user_input:
-                # If it contains upload/attach but doesn't start with /, extract the command
-                if not user_input.startswith('/') and ('/upload' in user_input or '/attach' in user_input):
-                    # Extract the upload/attach command and process it
-                    if '/upload' in user_input:
-                        # Find the /upload command and everything after it
-                        upload_index = user_input.find('/upload')
-                        command_part = user_input[upload_index:]
-                        user_input = command_part  # Replace user_input with just the command part
-                    elif '/attach' in user_input:
-                        # Find the /attach command and everything after it
-                        attach_index = user_input.find('/attach')
-                        command_part = user_input[attach_index:]
-                        user_input = command_part  # Replace user_input with just the command part
+            # Handle special commands and file picker
+            # Check if input starts with a command OR contains file picker
+            if user_input.startswith('/'):
+                # Handle regular commands starting with /
+                command = user_input.lower()
+            elif user_input.startswith('#'):
+                # Handle file picker with #
+                file_path = user_input[1:].strip()
                 
+                if not file_path:
+                    console.print("[yellow]Please select a file using the file picker.[/yellow]")
+                    console.print("[dim]Type # to browse files in the current directory[/dim]")
+                    continue
+                
+                # Handle relative paths - make them absolute
+                if not os.path.isabs(file_path):
+                    file_path = os.path.abspath(file_path)
+                
+                # Check if file exists
+                if not os.path.exists(file_path):
+                    console.print(f"[red]File not found: {file_path}[/red]")
+                    console.print("[dim]Make sure the file path is correct and the file exists.[/dim]")
+                    continue
+
+                # Show attachment preview
+                file_name = os.path.basename(file_path)
+                file_ext = os.path.splitext(file_path)[1].lower()
+                file_size = os.path.getsize(file_path)
+                file_size_formatted = format_file_size(file_size)
+
+                console.print(Panel.fit(
+                    f"File: [bold]{file_name}[/bold]\n"
+                    f"Type: {file_ext[1:].upper() if file_ext else 'Unknown'}\n"
+                    f"Size: {file_size_formatted}",
+                    title="📎 Attachment Preview",
+                    border_style="cyan"
+                ))
+
+                # Process the file attachment
+                success, message = handle_attachment(file_path, conversation_history)
+                if success:
+                    console.print(f"[green]{message}[/green]")
+                else:
+                    console.print(f"[red]{message}[/red]")
+                    continue
+                
+                # Continue to get user's actual message about the file
+                console.print("\n[dim]The file has been attached. Now enter your message about this file:[/dim]")
+                
+                # Get user input for the message about the file
+                if HAS_PROMPT_TOOLKIT:
+                    user_message = get_user_input_with_completion(session_history)
+                else:
+                    print("> ", end="")
+                    user_message = input()
+                
+                if user_message.strip():
+                    user_input = user_message  # Use the message as the actual input
+                else:
+                    continue  # Skip if no message provided
+            
+            elif '#' in user_input:
+                # Handle file picker anywhere in the message
+                parts = user_input.split('#', 1)
+                if len(parts) == 2:
+                    message_part = parts[0].strip()
+                    file_and_rest = parts[1].strip()
+                    
+                    if file_and_rest:
+                        # Parse filename and any additional text after it
+                        # Split by whitespace to separate filename from additional text
+                        file_tokens = file_and_rest.split()
+                        file_part = file_tokens[0] if file_tokens else ""
+                        additional_text = " ".join(file_tokens[1:]) if len(file_tokens) > 1 else ""
+                        
+                        if file_part:
+                            # Handle relative paths - make them absolute
+                            if not os.path.isabs(file_part):
+                                file_part = os.path.abspath(file_part)
+                            
+                            # Check if file exists
+                            if not os.path.exists(file_part):
+                                console.print(f"[red]File not found: {file_part}[/red]")
+                                console.print("[dim]Make sure the file path is correct and the file exists.[/dim]")
+                                continue
+
+                        # Show attachment preview
+                        file_name = os.path.basename(file_part)
+                        file_ext = os.path.splitext(file_part)[1].lower()
+                        file_size = os.path.getsize(file_part)
+                        file_size_formatted = format_file_size(file_size)
+
+                        console.print(Panel.fit(
+                            f"File: [bold]{file_name}[/bold]\n"
+                            f"Type: {file_ext[1:].upper() if file_ext else 'Unknown'}\n"
+                            f"Size: {file_size_formatted}",
+                            title="📎 Attachment Preview",
+                            border_style="cyan"
+                        ))
+
+                        # Process the file attachment
+                        success, attachment_message = handle_attachment(file_part, conversation_history)
+                        if success:
+                            console.print(f"[green]{attachment_message}[/green]")
+                            # Combine message part with any additional text after filename
+                            combined_message = ""
+                            if message_part:
+                                combined_message = message_part
+                            if additional_text:
+                                if combined_message:
+                                    combined_message += " " + additional_text
+                                else:
+                                    combined_message = additional_text
+                            
+                            if combined_message:
+                                user_input = combined_message
+                            else:
+                                console.print("\n[dim]File attached. Enter your message about this file:[/dim]")
+                                if HAS_PROMPT_TOOLKIT:
+                                    user_input = get_user_input_with_completion(session_history)
+                                else:
+                                    print("> ", end="")
+                                    user_input = input()
+                        else:
+                            console.print(f"[red]{attachment_message}[/red]")
+                            continue
+            
+            # Process commands if we have one
+            if user_input.startswith('/'):
                 command = user_input.lower()
 
                 if command == '/exit' or command == '/quit':
@@ -1990,14 +2311,16 @@ def chat_with_model(config, conversation_history=None):
                                "/update - Check for updates\n" \
                                "/thinking - Show last AI thinking process\n" \
                                "/thinking-mode - Toggle thinking mode on/off\n" \
-                               "/attach or /upload <filepath> - Share a file with the AI (can be used anywhere in your message)"
+                               "# - Browse and attach files (can be used anywhere in your message)"
                     
                     if HAS_PROMPT_TOOLKIT:
                         help_text += "\n\n[dim]💡 Interactive Features:[/dim]\n"
                         help_text += "[dim]• Command auto-completion: Type '/' and all commands appear instantly[/dim]\n"
-                        help_text += "[dim]• Continue typing to filter commands (e.g., '/c' shows clear, cls, clear-screen)[/dim]\n"
+                        help_text += "[dim]• File picker: Type '#' anywhere to browse and select files[/dim]\n"
+                        help_text += "[dim]• Continue typing to filter commands/files (e.g., '/c' or '#main'[/dim]\n"
                         help_text += "[dim]• Press ↑/↓ arrow keys to navigate through previous prompts[/dim]\n"
                         help_text += "[dim]• Press Ctrl+R to search through prompt history[/dim]\n"
+                        help_text += "[dim]• Press Esc+Enter to toggle multi-line input mode[/dim]\n"
                         help_text += "[dim]• Auto-suggestions: Previous prompts appear as grey text while typing[/dim]"
                     
                     console.print(Panel.fit(
@@ -2097,7 +2420,8 @@ def chat_with_model(config, conversation_history=None):
                     stats_text += f"[bold]Token Usage:[/bold]\n"
                     stats_text += f"[cyan]Prompt tokens:[/cyan] {total_prompt_tokens:,}\n"
                     stats_text += f"[cyan]Completion tokens:[/cyan] {total_completion_tokens:,}\n"
-                    stats_text += f"[cyan]Total tokens:[/cyan] {total_tokens_used:,}\n\n"
+                    stats_text += f"[cyan]Total tokens:[/cyan] {total_tokens_used:,}\n"
+                    stats_text += f"[dim]Token counts from OpenRouter API (accurate)[/dim]\n\n"
                     
                     if pricing_info['is_free']:
                         stats_text += f"[green]💰 Cost: FREE[/green]\n"
@@ -2242,86 +2566,12 @@ def chat_with_model(config, conversation_history=None):
                         console.print(f"[green]Theme changed to {new_theme}[/green]")
                     continue
 
-                elif command.startswith('/attach') or command.startswith('/upload'):
-                    # Extract file path from command
-                    parts = user_input.split(' ', 1)
-                    if len(parts) > 1:
-                        file_path = parts[1].strip()  # Remove any extra whitespace
-                    else:
-                        console.print("[yellow]Please specify a file to attach.[/yellow]")
-                        console.print("[dim]Usage: /upload <filepath> or /attach <filepath>[/dim]")
-                        console.print("[dim]Example: /upload C:\\path\\to\\file.txt[/dim]")
-                        file_path = Prompt.ask("Enter the path to the file you want to attach")
-
-                    # Handle quoted paths (remove quotes if present)
-                    if file_path.startswith('"') and file_path.endswith('"'):
-                        file_path = file_path[1:-1]
-                    elif file_path.startswith("'") and file_path.endswith("'"):
-                        file_path = file_path[1:-1]
-
-                    # Check if file exists
-                    if not os.path.exists(file_path):
-                        console.print(f"[red]File not found: {file_path}[/red]")
-                        console.print("[dim]Make sure the file path is correct and the file exists.[/dim]")
-                        console.print("[dim]Tip: You can drag and drop the file into the terminal to get its path.[/dim]")
-                        continue
-
-                    # Show attachment preview
-                    file_name = os.path.basename(file_path)
-                    file_ext = os.path.splitext(file_path)[1].lower()
-                    file_size = os.path.getsize(file_path)
-                    file_size_formatted = format_file_size(file_size)
-
-                    console.print(Panel.fit(
-                        f"File: [bold]{file_name}[/bold]\n"
-                        f"Type: {file_ext[1:].upper() if file_ext else 'Unknown'}\n"
-                        f"Size: {file_size_formatted}",
-                        title="📎 Attachment Preview",
-                        border_style="cyan"
-                    ))
-
-                    confirm = Prompt.ask("Attach this file? (y/n)", default="y")
-                    if confirm.lower() != 'y':
-                        console.print("[yellow]Attachment cancelled.[/yellow]")
-                        continue
-
-                    # Process the attachment
-                    console.print(f"[dim]Processing file: {file_path}[/dim]")
-                    success, message = handle_attachment(file_path, conversation_history)
-                    console.print(f"[{'green' if success else 'red'}]{message}[/{'green' if success else 'red'}]")
-
-                    if success:
-                        # Prompt for additional comment or context
-                        add_comment = Prompt.ask("Add a comment about this attachment? (y/n)", default="n")
-                        if add_comment.lower() == 'y':
-                            comment = Prompt.ask("Enter your comment")
-                            # Replace the last message with comment included
-                            if conversation_history[-1]["role"] == "user":
-                                if isinstance(conversation_history[-1]["content"], list):
-                                    # For multimodal messages
-                                    conversation_history[-1]["content"][0]["text"] += f"\n\n{comment}"
-                                else:
-                                    # For text messages
-                                    conversation_history[-1]["content"] += f"\n\n{comment}"
-
-                        console.print("[yellow]Attachment added to conversation. The file content is now available to the AI. Send a message or press Enter to get AI response.[/yellow]")
-                        
-                        # Also show a brief preview of what was attached
-                        if conversation_history and conversation_history[-1]["role"] == "user":
-                            content = conversation_history[-1]["content"]
-                            if isinstance(content, str) and len(content) > 100:
-                                preview = content[:100] + "..."
-                                console.print(f"[dim]Content preview: {preview}[/dim]")
-                            elif isinstance(content, list):
-                                console.print(f"[dim]Multimodal content attached (image + text)[/dim]")
-                    continue
-
                 elif command == '/about':
                     show_about()
                     continue
 
                 elif command == '/update':
-                    check_for_updates()
+                    check_for_updates(silent=False)
                     continue
 
                 elif command == '/thinking':
@@ -2394,7 +2644,9 @@ def chat_with_model(config, conversation_history=None):
                     continue
 
             # Count tokens in user input
-            input_tokens = count_tokens(user_input)
+            # Estimate input tokens for display purposes (will be replaced by API data if available)
+            estimated_input_tokens = count_tokens(user_input)
+            input_tokens = estimated_input_tokens
             total_prompt_tokens += input_tokens
 
             # Add user message to conversation history
@@ -2464,7 +2716,7 @@ def chat_with_model(config, conversation_history=None):
 
                 if response.status_code == 200:
                     # Pass config['thinking_mode'] to stream_response
-                    message_content, response_time = stream_response(response, start_time, config['thinking_mode'])
+                    message_content, response_time, usage_info = stream_response(response, start_time, config['thinking_mode'])
 
                     # Only add to history if we got actual content
                     if message_content:
@@ -2473,10 +2725,23 @@ def chat_with_model(config, conversation_history=None):
                         # Add assistant response to conversation history
                         conversation_history.append({"role": "assistant", "content": message_content})
 
-                        # Count tokens and update total
-                        response_tokens = count_tokens(message_content)
-                        total_tokens_used += input_tokens + response_tokens
-                        total_completion_tokens += response_tokens
+                        # Use API-provided token counts if available, otherwise fallback to tiktoken
+                        if usage_info:
+                            actual_prompt_tokens = usage_info.get('prompt_tokens', 0)
+                            actual_completion_tokens = usage_info.get('completion_tokens', 0)
+                            actual_total_tokens = usage_info.get('total_tokens', actual_prompt_tokens + actual_completion_tokens)
+                            
+                            total_prompt_tokens += actual_prompt_tokens
+                            total_completion_tokens += actual_completion_tokens
+                            total_tokens_used += actual_total_tokens
+                            
+                            input_tokens = actual_prompt_tokens
+                            response_tokens = actual_completion_tokens
+                        else:
+                            # Fallback to tiktoken estimation
+                            response_tokens = count_tokens(message_content)
+                            total_tokens_used += input_tokens + response_tokens
+                            total_completion_tokens += response_tokens
 
                         # Calculate cost for this exchange
                         exchange_cost = calculate_session_cost(input_tokens, response_tokens, pricing_info)
@@ -2485,8 +2750,9 @@ def chat_with_model(config, conversation_history=None):
                         formatted_time = format_time_delta(response_time)
                         console.print(f"[dim]⏱️ Response time: {formatted_time}[/dim]")
                         
-                        # Enhanced token display with cost
-                        token_display = f"[dim]Tokens: {input_tokens} (input) + {response_tokens} (response) = {input_tokens + response_tokens} (total)"
+                        # Enhanced token display with cost and accuracy indicator
+                        token_source = "API" if usage_info else "estimated"
+                        token_display = f"[dim]Tokens: {input_tokens} (input) + {response_tokens} (response) = {input_tokens + response_tokens} (total) [{token_source}]"
                         if exchange_cost > 0:
                             if exchange_cost < 0.01:
                                 token_display += f" | Cost: ${exchange_cost:.6f}"
@@ -2635,6 +2901,12 @@ def main():
 
     # Show welcome UI
     create_chat_ui()
+
+    # Auto-check for updates on startup
+    try:
+        check_for_updates(silent=True)
+    except Exception:
+        pass  # Silently ignore update check failures
 
     # Check if API key is set
     if not config['api_key'] or config['api_key'] == "<YOUR_OPENROUTER_API_KEY>":
