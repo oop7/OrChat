@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="orchat",
-    version="1.3.1",
+    version="1.3.2",
     author="oop7",
     author_email="oop7_support@proton.me",
     description="A powerful CLI for chatting with AI models through OpenRouter",

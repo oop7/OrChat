@@ -57,7 +57,7 @@ colorama.init()
 
 # App metadata
 APP_NAME = "OrChat"
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.3.2"
 REPO_URL = "https://github.com/oop7/OrChat"
 API_URL = "https://api.github.com/repos/oop7/OrChat/releases/latest"
 
