@@ -1647,11 +1647,11 @@ def stream_response(response, start_time, thinking_mode=False):
                                 thinking_content += content
                                 continue
 
-                        # Not in thinking mode or model doesn't support thinking, collect for display
-                        collected_content.append(content)
+                        # Not in thinking mode or outside thinking tags, print for display
+                        console.print(content, end="", flush=True)
             except json.JSONDecodeError:
-                # For non-JSON chunks, quietly ignore
-                pass
+                # For non-JSON chunks, print them directly
+                console.print(chunk_text, end="", flush=True)
     except Exception as e:
         console.print(f"\n[red]Error during streaming: {str(e)}[/red]")
 
@@ -2157,6 +2157,10 @@ def chat_with_model(config, conversation_history=None):
             else:
                 print("> ", end="")
                 user_input = input()
+
+            # Ignore empty or whitespace-only input
+            if not user_input.strip():
+                continue
 
             # Handle special commands and file picker
             # Check if input starts with a command OR contains file picker
@@ -2819,6 +2823,7 @@ def chat_with_model(config, conversation_history=None):
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Keyboard interrupt detected. Type /exit to quit.[/yellow]")
+            break
         except Exception as e:
             console.print(f"[red]Error: {str(e)}[/red]")
 
@@ -2997,4 +3002,3 @@ if __name__ == "__main__":
     except Exception as e:
         console.print(f"[red]Critical error: {str(e)}[/red]")
         sys.exit(1)
-
