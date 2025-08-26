@@ -1647,11 +1647,11 @@ def stream_response(response, start_time, thinking_mode=False):
                                 thinking_content += content
                                 continue
 
-                        # Not in thinking mode or outside thinking tags, print for display
-                        console.print(content, end="", flush=True)
+                        # Not in thinking mode or model doesn't support thinking, collect for display
+                        collected_content.append(content)
             except json.JSONDecodeError:
-                # For non-JSON chunks, print them directly
-                console.print(chunk_text, end="", flush=True)
+                # For non-JSON chunks, quietly ignore
+                pass
     except Exception as e:
         console.print(f"\n[red]Error during streaming: {str(e)}[/red]")
 
