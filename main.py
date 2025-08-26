@@ -116,8 +116,6 @@ class OrChatCompleter(Completer):
     COMMANDS = {
         'clear': 'Clear the screen and conversation history',
         'chat': 'Manage conversation history. Usage: /chat <list|save|resume> <tag>',
-        'exit': 'Exit the chat',
-        'quit': 'Exit the chat', 
         'new': 'Start a new conversation',
         'cls': 'Clear terminal screen',
         'clear-screen': 'Clear terminal screen',
@@ -2072,6 +2070,10 @@ def chat_with_model(config, conversation_history=None):
         session_history = InMemoryHistory()
     else:
         session_history = None
+    
+    # Initialize double CTRL+C exit tracking
+    ctrl_c_count = 0
+    last_ctrl_c_time = 0
 
     headers = {
         "Authorization": f"Bearer {config['api_key']}",
@@ -2102,7 +2104,8 @@ def chat_with_model(config, conversation_history=None):
         f"[cyan]Thinking mode:[/cyan] {'[green]✓ Enabled[/green]' if config['thinking_mode'] else '[yellow]✗ Disabled[/yellow]'}\n"
         f"{pricing_display}\n"
         f"[cyan]Session started:[/cyan] {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        f"Type your message or use commands: /help for available commands",
+        f"Type your message or use commands: /help for available commands\n"
+        f"[dim]Press Ctrl+C again to exit[/dim]",
         title="🤖 Chat Session Active",
         border_style="green"
     ))
@@ -2161,6 +2164,9 @@ def chat_with_model(config, conversation_history=None):
             # Ignore empty or whitespace-only input
             if not user_input.strip():
                 continue
+
+            # Reset CTRL+C counter when user provides valid input
+            ctrl_c_count = 0
 
             # Handle special commands and file picker
             # Check if input starts with a command OR contains file picker
@@ -2293,14 +2299,8 @@ def chat_with_model(config, conversation_history=None):
             if user_input.startswith('/'):
                 command = user_input.lower()
 
-                if command == '/exit' or command == '/quit':
-                    console.print("[yellow]Exiting chat...[/yellow]")
-                    break
-
                 if command == '/help':
-                    help_text = "/exit - Exit the chat\n" \
-                               "/quit - Exit the chat\n" \
-                               "/new - Start a new conversation\n" \
+                    help_text = "/new - Start a new conversation\n" \
                                "/clear - Clear conversation history\n" \
                                "/cls or /clear-screen - Clear terminal screen\n" \
                                "/save - Save conversation to file\n" \
@@ -2315,7 +2315,8 @@ def chat_with_model(config, conversation_history=None):
                                "/update - Check for updates\n" \
                                "/thinking - Show last AI thinking process\n" \
                                "/thinking-mode - Toggle thinking mode on/off\n" \
-                               "# - Browse and attach files (can be used anywhere in your message)"
+                               "# - Browse and attach files (can be used anywhere in your message)\n" \
+                               "[yellow]Press Ctrl+C twice to exit[/yellow]"
                     
                     if HAS_PROMPT_TOOLKIT:
                         help_text += "\n\n[dim]💡 Interactive Features:[/dim]\n"
@@ -2822,8 +2823,17 @@ def chat_with_model(config, conversation_history=None):
                 timer_display.stop()
 
         except KeyboardInterrupt:
-            console.print("\n[yellow]Keyboard interrupt detected. Type /exit to quit.[/yellow]")
-            break
+            current_time = time.time()
+            # Check if this is a double CTRL+C (within 2 seconds)
+            if ctrl_c_count > 0 and (current_time - last_ctrl_c_time) <= 2.0:
+                console.print("\n[yellow]Exiting chat...[/yellow]")
+                break
+            else:
+                # First CTRL+C or too much time passed since last one
+                ctrl_c_count = 1
+                last_ctrl_c_time = current_time
+                console.print("\n[yellow]Press Ctrl+C again to exit.[/yellow]")
+                continue
         except Exception as e:
             console.print(f"[red]Error: {str(e)}[/red]")
 
