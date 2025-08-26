@@ -64,6 +64,7 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - **Automatic Command Completion**: Start typing "/" and command suggestions appear instantly - no Tab key needed!
 - **Auto-Suggest from History**: Previous commands and prompts appear as grey suggestions as you type
 - **Intelligent File Picker**: Use `#` anywhere in your message for file selection with auto-completion and browser popup
+- **Double Ctrl+C Exit**: Press Ctrl+C twice within 2 seconds to gracefully exit the chat session
 
 **💡 How Auto-Completion Works:**
 - Type `/` → All available commands appear automatically
@@ -77,6 +78,11 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - Choose files interactively (with icons for file types)
 - Insert filenames naturally into your prompt, e.g., `examine #test.py and check for errors`
 - File picker works anywhere in your message, not just at the beginning
+
+**💡 How to Exit:**
+- Press **Ctrl+C** once → Shows "Press Ctrl+C again to exit" message
+- Press **Ctrl+C** again within 2 seconds → Gracefully exits the chat
+- This prevents accidental exits while allowing quick termination when needed
 
 </details>
 
@@ -216,8 +222,6 @@ THINKING_MODE = False
 | Command                   | Description                                           |
 | ------------------------- | ----------------------------------------------------- |
 | `/help`                   | Show available commands                               |
-| `/exit`                   | Exit the chat                                         |
-| `/quit`                   | Exit the chat                                         |
 | `/new`                    | Start a new conversation                              |
 | `/clear`                  | Clear conversation history                            |
 | `/cls` or `/clear-screen` | Clear the terminal screen                             |
@@ -233,6 +237,7 @@ THINKING_MODE = False
 | `/about`                  | Show information about OrChat                         |
 | `/update`                 | Check for updates                                     |
 | `/settings`               | View current settings                                 |
+| **Ctrl+C** (twice)        | **Exit the chat (press twice within 2 seconds)**     |
 
 <a id="file-attachment"></a>
 ## 📁 File Attachment
