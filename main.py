@@ -2158,6 +2158,10 @@ def chat_with_model(config, conversation_history=None):
                 print("> ", end="")
                 user_input = input()
 
+            # Ignore empty or whitespace-only input
+            if not user_input.strip():
+                continue
+
             # Handle special commands and file picker
             # Check if input starts with a command OR contains file picker
             if user_input.startswith('/'):
@@ -2819,6 +2823,7 @@ def chat_with_model(config, conversation_history=None):
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Keyboard interrupt detected. Type /exit to quit.[/yellow]")
+            break
         except Exception as e:
             console.print(f"[red]Error: {str(e)}[/red]")
 
@@ -2997,4 +3002,3 @@ if __name__ == "__main__":
     except Exception as e:
         console.print(f"[red]Critical error: {str(e)}[/red]")
         sys.exit(1)
-
