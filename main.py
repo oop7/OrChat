@@ -57,7 +57,7 @@ colorama.init()
 
 # App metadata
 APP_NAME = "OrChat"
-APP_VERSION = "1.3.2"
+APP_VERSION = "1.4.0"
 REPO_URL = "https://github.com/oop7/OrChat"
 API_URL = "https://api.github.com/repos/oop7/OrChat/releases/latest"
 
@@ -115,7 +115,7 @@ class OrChatCompleter(Completer):
     # Static command definitions for better performance
     COMMANDS = {
         'clear': 'Clear the screen and conversation history',
-        'chat': 'Manage conversation history. Usage: /chat <list|save|resume> <tag>',
+        'chat': 'Manage conversation history. Usage: /chat <list|save|resume> [session_id]',
         'new': 'Start a new conversation',
         'cls': 'Clear terminal screen',
         'clear-screen': 'Clear terminal screen',
@@ -1745,6 +1745,144 @@ def save_conversation(conversation_history, filename, fmt="markdown"):
 
     return filename
 
+def load_conversation(session_id):
+    """Load conversation from a session directory"""
+    sessions_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sessions")
+    session_path = os.path.join(sessions_dir, session_id)
+    
+    if not os.path.exists(session_path):
+        return None, "Session not found"
+    
+    # Look for JSON file first (preferred for resume)
+    json_files = [f for f in os.listdir(session_path) if f.endswith('.json')]
+    if json_files:
+        json_file = os.path.join(session_path, json_files[0])
+        try:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                conversation_history = json.load(f)
+            return conversation_history, None
+        except Exception as e:
+            return None, f"Error loading JSON file: {str(e)}"
+    
+    # Fallback to parsing markdown file
+    md_files = [f for f in os.listdir(session_path) if f.endswith('.md')]
+    if md_files:
+        md_file = os.path.join(session_path, md_files[0])
+        try:
+            conversation_history = []
+            with open(md_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Simple markdown parser for conversation format
+            sections = content.split('## ')
+            for section in sections[1:]:  # Skip header
+                lines = section.strip().split('\n', 1)
+                if len(lines) >= 2:
+                    role = lines[0].lower()
+                    if role == 'system instructions':
+                        role = 'system'
+                    content_text = lines[1].strip()
+                    conversation_history.append({"role": role, "content": content_text})
+            
+            return conversation_history, None
+        except Exception as e:
+            return None, f"Error parsing markdown file: {str(e)}"
+    
+    return None, "No conversation files found in session"
+
+def generate_conversation_summary(conversation_history):
+    """Generate a short summary of the conversation using a lightweight model"""
+    try:
+        # Extract meaningful content (skip system messages)
+        user_messages = [msg['content'] for msg in conversation_history if msg['role'] == 'user']
+        assistant_messages = [msg['content'] for msg in conversation_history if msg['role'] == 'assistant']
+        
+        if not user_messages:
+            return "empty_conversation"
+        
+        # Create a condensed version for summarization
+        conversation_text = ""
+        for i, (user_msg, assistant_msg) in enumerate(zip(user_messages[:3], assistant_messages[:3])):  # Only first 3 exchanges
+            conversation_text += f"User: {user_msg[:100]}...\n"
+            if assistant_msg:
+                conversation_text += f"Assistant: {assistant_msg[:100]}...\n"
+        
+        # Use a lightweight free model for summarization
+        summary_prompt = f"""Create a very short (2-4 words) topic summary for this conversation. Use lowercase with underscores, no spaces. Examples: "python_coding", "travel_advice", "cooking_tips", "math_help", "job_interview".
+
+Conversation:
+{conversation_text}
+
+Summary:"""
+
+        # Make API call with lightweight model
+        data = {
+            "model": "meta-llama/llama-3.3-8b-instruct:free",
+            "messages": [{"role": "user", "content": summary_prompt}],
+            "temperature": 0.3,
+            "max_tokens": 20
+        }
+        
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
+                "Content-Type": "application/json"
+            },
+            json=data,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if 'choices' in result and len(result['choices']) > 0:
+                summary = result['choices'][0]['message']['content'].strip()
+                # Clean up the summary - remove quotes, ensure it's valid
+                summary = summary.replace('"', '').replace("'", "").replace(' ', '_').lower()
+                # Limit length and ensure it's alphanumeric + underscores
+                summary = re.sub(r'[^a-z0-9_]', '', summary)[:20]
+                return summary if summary else "conversation"
+        
+        # Fallback to simple topic detection
+        combined_text = " ".join(user_messages[:2]).lower()
+        if any(word in combined_text for word in ['code', 'program', 'python', 'javascript', 'html']):
+            return "coding_help"
+        elif any(word in combined_text for word in ['travel', 'trip', 'vacation', 'visit']):
+            return "travel_advice"
+        elif any(word in combined_text for word in ['cook', 'recipe', 'food', 'eat']):
+            return "cooking_tips"
+        elif any(word in combined_text for word in ['work', 'job', 'career', 'interview']):
+            return "career_advice"
+        else:
+            return "general_chat"
+            
+    except Exception as e:
+        # Fallback to timestamp if everything fails
+        return datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+
+def save_session_metadata(session_dir, summary):
+    """Save session metadata including the human-readable summary"""
+    metadata = {
+        "summary": summary,
+        "created": datetime.datetime.now().isoformat(),
+        "session_id": os.path.basename(session_dir)
+    }
+    metadata_file = os.path.join(session_dir, "metadata.json")
+    with open(metadata_file, 'w', encoding='utf-8') as f:
+        json.dump(metadata, f, indent=2)
+
+def get_session_summary(session_dir):
+    """Get the human-readable summary for a session"""
+    metadata_file = os.path.join(session_dir, "metadata.json")
+    if os.path.exists(metadata_file):
+        try:
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                metadata = json.load(f)
+            return metadata.get('summary', os.path.basename(session_dir))
+        except:
+            pass
+    return os.path.basename(session_dir)  # Fallback to directory name
+
 def manage_context_window(conversation_history, max_tokens=8000, model_name="cl100k_base"):
     """Manage the context window to prevent exceeding token limits"""
     # Always keep the system message
@@ -2304,6 +2442,7 @@ def chat_with_model(config, conversation_history=None):
                                "/clear - Clear conversation history\n" \
                                "/cls or /clear-screen - Clear terminal screen\n" \
                                "/save - Save conversation to file\n" \
+                               "/chat <list|save|resume> [session_id] - Manage conversation history\n" \
                                "/settings - Adjust model settings\n" \
                                "/tokens - Show token usage statistics\n" \
                                "/model - Change the AI model\n" \
@@ -2642,6 +2781,79 @@ def chat_with_model(config, conversation_history=None):
                         border_style="green"
                     ))
                     console.print("[green]Terminal screen cleared. Chat session continues.[/green]")
+                    continue
+
+                elif command.startswith('/chat'):
+                    parts = user_input.split()
+                    if len(parts) < 2:
+                        console.print("[yellow]Usage: /chat <list|save|resume> [session_id][/yellow]")
+                        continue
+                    
+                    action = parts[1].lower()
+                    session_id = parts[2] if len(parts) > 2 else None
+                    
+                    if action == 'list':
+                        # List saved conversations with human-readable summaries
+                        sessions_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sessions")
+                        if os.path.exists(sessions_dir):
+                            sessions = [d for d in os.listdir(sessions_dir) if os.path.isdir(os.path.join(sessions_dir, d))]
+                            if sessions:
+                                session_list = []
+                                for session in sorted(sessions, reverse=True):  # Most recent first
+                                    session_path = os.path.join(sessions_dir, session)
+                                    summary = get_session_summary(session_path)
+                                    session_list.append(f"{summary} ({session})")
+                                
+                                console.print(Panel.fit(f"Saved sessions:\n" + "\n".join(session_list), title="Chat History"))
+                            else:
+                                console.print("[yellow]No saved conversations found.[/yellow]")
+                        else:
+                            console.print("[yellow]No sessions directory found.[/yellow]")
+                    elif action == 'save':
+                        # Generate a meaningful summary for this conversation
+                        console.print("[cyan]Generating conversation summary...[/cyan]")
+                        summary = generate_conversation_summary(conversation_history)
+                        
+                        # Save both markdown and JSON for resume capability
+                        md_filepath = os.path.join(session_dir, f"{summary}.md")
+                        json_filepath = os.path.join(session_dir, f"{summary}.json")
+                        save_conversation(conversation_history, md_filepath, "markdown")
+                        save_conversation(conversation_history, json_filepath, "json")
+                        
+                        # Save metadata with summary
+                        save_session_metadata(session_dir, summary)
+                        
+                        console.print(f"[green]Conversation saved as '{summary}'[/green]")
+                    elif action == 'resume':
+                        if not session_id:
+                            console.print("[yellow]Please specify a session ID to resume. Use '/chat list' to see available sessions.[/yellow]")
+                        else:
+                            # If user provides a summary name, find the corresponding session
+                            sessions_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sessions")
+                            target_session = session_id
+                            
+                            # Check if it's a summary name by looking through all sessions
+                            if os.path.exists(sessions_dir):
+                                for session in os.listdir(sessions_dir):
+                                    session_path = os.path.join(sessions_dir, session)
+                                    if os.path.isdir(session_path):
+                                        summary = get_session_summary(session_path)
+                                        if summary == session_id:
+                                            target_session = session
+                                            break
+                            
+                            loaded_history, error = load_conversation(target_session)
+                            if error:
+                                console.print(f"[red]Error loading conversation: {error}[/red]")
+                            else:
+                                conversation_history.clear()
+                                conversation_history.extend(loaded_history)
+                                console.print(f"[green]Conversation resumed from session {target_session}![/green]")
+                                # Show a brief summary
+                                msg_count = len([msg for msg in conversation_history if msg['role'] in ['user', 'assistant']])
+                                console.print(f"[cyan]Loaded {msg_count} messages from previous conversation.[/cyan]")
+                    else:
+                        console.print("[yellow]Unknown chat action. Use: list, save, or resume[/yellow]")
                     continue
 
                 else:
