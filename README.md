@@ -2,7 +2,7 @@
 
 # 🤖 OrChat
 
-<img src="https://github.com/user-attachments/assets/df20dccc-8971-414e-9281-74260f05bf44" width="800" alt="OrChat Interface"/>
+<img src="assets\OrChat-Interface.png" width="800" alt="OrChat Interface"/>
 
 [![PyPI version](https://img.shields.io/pypi/v/orchat?color=86efac&style=for-the-badge&logo=pypi&logoColor=black)](https://badge.fury.io/py/orchat)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981?style=for-the-badge&logo=opensource&logoColor=white)](https://opensource.org/licenses/MIT)
