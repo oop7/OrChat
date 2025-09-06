@@ -10,9 +10,9 @@
 [![Downloads](https://img.shields.io/pepy/dt/orchat?color=1f2937&style=for-the-badge&logo=download&logoColor=white)](https://pepy.tech/project/orchat)
 [![GitHub Stars](https://img.shields.io/github/stars/oop7/OrChat?color=86efac&style=for-the-badge&logo=github&logoColor=black)](https://github.com/oop7/OrChat/stargazers)
 
-[🚀 Installation](#installation) • [✨ Features](#features) • [💬 Chat Commands](#chat-commands) • [📁 File Attachment](#file-attachment) • [🧠 Thinking Mode](#thinking-mode) • [⚙️ Configuration](#configuration) • [🔍 Troubleshooting](#troubleshooting) • [🤝 Contributing](#contributing)
+[🚀 Installation](#installation) • [✨ Features](#features) • [💬 Chat Commands](#chat-commands) • [🗂️ Conversation Management](#conversation-management) • [📁 File Attachment](#file-attachment) • [🧠 Thinking Mode](#thinking-mode) • [⚙️ Configuration](#configuration) • [🔍 Troubleshooting](#troubleshooting) • [🤝 Contributing](#contributing)
 
-A powerful CLI for chatting with AI models through OpenRouter with streaming responses, token tracking, auto-update checking, multi-line input, and extensive customization options.
+A powerful CLI for chatting with AI models through OpenRouter with streaming responses, token tracking, auto-update checking, multi-line input, conversation management with AI-generated summaries, and extensive customization options.
 
 </div>
 
@@ -32,6 +32,9 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - **Pricing Display**: Real-time pricing information displayed during active chat sessions
 - **Auto-Update System**: Automatic update checking at startup with pip integration
 - **Multi-line Input Support**: Compose multi-paragraph messages with `Esc+Enter` and visual feedback
+- **Conversation Management**: Save, list, and resume conversations with AI-generated topic summaries
+- **Smart Summarization**: Automatically generates meaningful names for saved sessions (e.g., "python_coding", "travel_advice")
+- **Session Persistence**: Resume conversations exactly where you left off with full context
 
 </details>
 
@@ -51,6 +54,7 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - **Smart Thinking Mode**: See the AI's reasoning process with compatible models
 - **Multiple Export Formats**: Save conversations as Markdown, HTML, JSON, TXT, or PDF
 - **Smart Context Management**: Automatically manages conversation history to stay within token limits
+- **Conversation Management**: Save, list, and resume conversations with AI-generated summaries
 - **Customizable Themes**: Choose from different visual themes for your terminal
 
 </details>
@@ -226,6 +230,9 @@ THINKING_MODE = False
 | `/clear`                  | Clear conversation history                            |
 | `/cls` or `/clear-screen` | Clear the terminal screen                             |
 | `/save [format]`          | Save conversation (formats: md, html, json, txt, pdf) |
+| `/chat list`              | List saved conversations with human-readable summaries |
+| `/chat save`              | Save current conversation with auto-generated summary  |
+| `/chat resume <session>`  | Resume a saved conversation by name or ID              |
 | `/model`                  | Change the AI model                                   |
 | `/temperature <0.0-2.0>`  | Adjust temperature setting                            |
 | `/system`                 | View or change system instructions                    |
@@ -238,6 +245,36 @@ THINKING_MODE = False
 | `/update`                 | Check for updates                                     |
 | `/settings`               | View current settings                                 |
 | **Ctrl+C** (twice)        | **Exit the chat (press twice within 2 seconds)**     |
+
+<a id="conversation-management"></a>
+## 💾 Conversation Management
+
+<details>
+<summary><strong>📋 Session Management</strong></summary>
+
+OrChat provides powerful conversation management with human-readable session summaries:
+
+**Commands:**
+- `/chat list` - View all saved conversations with meaningful names
+- `/chat save` - Save current conversation with auto-generated topic summary
+- `/chat resume <session>` - Resume any saved conversation by name or ID
+
+**Features:**
+- **Smart Summarization**: Uses AI to generate 2-4 word topic summaries (e.g., "python_coding", "travel_advice", "cooking_tips")
+- **Fallback Detection**: Automatically detects topics like coding, travel, cooking, career advice
+- **Dual Storage**: Saves both human-readable summaries and original timestamp IDs
+- **Easy Resume**: Resume conversations using either the summary name or original ID
+
+**Example Session List:**
+```
+Saved sessions:
+general_chat (20250906_141133)
+python_coding (20250906_140945)
+travel_advice (20250906_140812)
+cooking_tips (20250906_140734)
+```
+
+</details>
 
 <a id="file-attachment"></a>
 ## 📁 File Attachment
@@ -355,6 +392,7 @@ Check for updates with the `/update` command to see if a newer version is availa
 - **Insufficient Account Credit**: If you receive a 402 error, check your OpenRouter account balance and add funds as needed
 - **File Path Problems**: When using `/attach` or `/upload`, use quotes for paths with spaces and ensure correct path format for your OS
 - **Model Compatibility**: Some features like thinking mode only work with specific models
+- **Conversation Management**: Use `/chat list` to see saved conversations, `/chat save` to save current session, and `/chat resume <name>` to continue previous conversations
 - **Command Usage**: Remember that `/upload` and `/attach` can be used anywhere in your message for flexibility
 
 </details>
