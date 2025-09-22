@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "orchat"
-version = "1.4.0"
+version = "1.4.1"
 authors = [
     {name = "oop7", email = "oop7_support@proton.me"},
 ]
