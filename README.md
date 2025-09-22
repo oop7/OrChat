@@ -41,7 +41,7 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 <details>
 <summary><strong>📎 File & Media Support</strong></summary>
 
-- **Smart File Picker**: Attach files anywhere in your message using `#` (e.g., `analyze #myfile.py`)
+- **Smart File Picker**: Attach files anywhere in your message using `@` (e.g., `analyze @myfile.py`)
 - **Interactive File Browser**: Browse files with icons, sizes, and directory navigation in a popup interface
 - **Multimodal Support**: Share images and various file types with compatible AI models
 - **Enhanced File Processing**: Improved file attachment with better error handling and path support
@@ -67,7 +67,7 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - **History Search**: Use Ctrl+R to search through your prompt history with keywords
 - **Automatic Command Completion**: Start typing "/" and command suggestions appear instantly - no Tab key needed!
 - **Auto-Suggest from History**: Previous commands and prompts appear as grey suggestions as you type
-- **Intelligent File Picker**: Use `#` anywhere in your message for file selection with auto-completion and browser popup
+- **Intelligent File Picker**: Use `@` anywhere in your message for file selection with auto-completion and browser popup
 - **Double Ctrl+C Exit**: Press Ctrl+C twice within 2 seconds to gracefully exit the chat session
 
 **💡 How Auto-Completion Works:**
@@ -78,9 +78,9 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - No Tab key required - completions appear as you type!
 
 **💡 How File Picker Works:**
-- Type `#` anywhere in your message to open the file picker
+- Type `@` anywhere in your message to open the file picker
 - Choose files interactively (with icons for file types)
-- Insert filenames naturally into your prompt, e.g., `examine #test.py and check for errors`
+- Insert filenames naturally into your prompt, e.g., `examine @test.py and check for errors`
 - File picker works anywhere in your message, not just at the beginning
 
 **💡 How to Exit:**
@@ -285,10 +285,10 @@ cooking_tips (20250906_140734)
 Attach files naturally in your messages using the smart file picker:
 
 ```
-analyze #path/to/your/file.ext for issues
-examine #script.py and explain its logic
+analyze @path/to/your/file.ext for issues
+examine @script.py and explain its logic
 ```
-- Use `#` anywhere in your message to open the file picker popup
+- Use `@` anywhere in your message to open the file picker popup
 
 </details>
 

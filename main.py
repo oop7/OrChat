@@ -150,7 +150,7 @@ class OrChatCompleter(Completer):
                 )
 
 class FilePickerCompleter(Completer):
-    """Optimized file picker completer for # symbol."""
+    """Optimized file picker completer for @ symbol."""
     
     # File type icons (static for performance)
     FILE_ICONS = {
@@ -204,16 +204,16 @@ class FilePickerCompleter(Completer):
             return []
     
     def get_completions(self, document, complete_event):
-        """Generate file completions for # symbol anywhere in text."""
+        """Generate file completions for @ symbol anywhere in text."""
         text = document.text
         cursor_pos = document.cursor_position
         text_before = text[:cursor_pos]
-        hash_index = text_before.rfind('#')
+        at_index = text_before.rfind('@')
         
-        if hash_index == -1:
+        if at_index == -1:
             return
             
-        path_part = text_before[hash_index + 1:]
+        path_part = text_before[at_index + 1:]
         # Stop if whitespace found (separate word)
         if ' ' in path_part or '\t' in path_part:
             return
@@ -250,7 +250,7 @@ class CombinedCompleter(Completer):
         
         if text.startswith('/'):
             yield from self.command_completer.get_completions(document, complete_event)
-        elif '#' in text[:cursor_pos]:
+        elif '@' in text[:cursor_pos]:
             yield from self.file_completer.get_completions(document, complete_event)
 
 def create_command_completer():
@@ -281,10 +281,10 @@ def get_user_input_with_completion(history=None):
         # Track multiline mode
         multiline_mode = [False]  # Use list to allow modification in nested functions
         
-        @bindings.add('#')
+        @bindings.add('@')
         def _(event):
-            """Auto-trigger file picker completion when '#' is typed"""
-            event.app.current_buffer.insert_text('#')
+            """Auto-trigger file picker completion when '@' is typed"""
+            event.app.current_buffer.insert_text('@')
             # Force completion menu to show
             event.app.current_buffer.start_completion()
         
@@ -299,23 +299,23 @@ def get_user_input_with_completion(history=None):
         for char in 'abcdefghijklmnopqrstuvwxyz.-_0123456789':
             @bindings.add(char)
             def _(event, char=char):
-                """Keep completion active while typing after / or #"""
+                """Keep completion active while typing after / or @"""
                 event.app.current_buffer.insert_text(char)
-                # Trigger completion if we're typing after a '/' or have '#' in the text
+                # Trigger completion if we're typing after a '/' or have '@' in the text
                 text = event.app.current_buffer.text
                 cursor_pos = event.app.current_buffer.cursor_position
                 
                 # Check for command completion
                 if text.startswith('/') and len(text) > 1:
                     event.app.current_buffer.start_completion()
-                # Check for file picker completion (# anywhere before cursor)
-                elif '#' in text[:cursor_pos]:
-                    # Find the last # before cursor
+                # Check for file picker completion (@ anywhere before cursor)
+                elif '@' in text[:cursor_pos]:
+                    # Find the last @ before cursor
                     text_before_cursor = text[:cursor_pos]
-                    hash_index = text_before_cursor.rfind('#')
-                    if hash_index != -1:
-                        # Check if we're still in the file path (no spaces after #)
-                        path_part = text_before_cursor[hash_index + 1:]
+                    at_index = text_before_cursor.rfind('@')
+                    if at_index != -1:
+                        # Check if we're still in the file path (no spaces after @)
+                        path_part = text_before_cursor[at_index + 1:]
                         if ' ' not in path_part and '\t' not in path_part:
                             event.app.current_buffer.start_completion()
         
@@ -325,19 +325,19 @@ def get_user_input_with_completion(history=None):
             """Handle backspace and retrigger completion if needed"""
             if event.app.current_buffer.text:
                 event.app.current_buffer.delete_before_cursor()
-                # Retrigger completion if we still have / at start or # anywhere
+                # Retrigger completion if we still have / at start or @ anywhere
                 text = event.app.current_buffer.text
                 cursor_pos = event.app.current_buffer.cursor_position
                 
                 if text.startswith('/'):
                     event.app.current_buffer.start_completion()
-                elif '#' in text[:cursor_pos]:
-                    # Find the last # before cursor
+                elif '@' in text[:cursor_pos]:
+                    # Find the last @ before cursor
                     text_before_cursor = text[:cursor_pos]
-                    hash_index = text_before_cursor.rfind('#')
-                    if hash_index != -1:
-                        # Check if we're still in the file path (no spaces after #)
-                        path_part = text_before_cursor[hash_index + 1:]
+                    at_index = text_before_cursor.rfind('@')
+                    if at_index != -1:
+                        # Check if we're still in the file path (no spaces after @)
+                        path_part = text_before_cursor[at_index + 1:]
                         if ' ' not in path_part and '\t' not in path_part:
                             event.app.current_buffer.start_completion()
         
@@ -2311,13 +2311,13 @@ def chat_with_model(config, conversation_history=None):
             if user_input.startswith('/'):
                 # Handle regular commands starting with /
                 command = user_input.lower()
-            elif user_input.startswith('#'):
-                # Handle file picker with #
+            elif user_input.startswith('@'):
+                # Handle file picker with @
                 file_path = user_input[1:].strip()
                 
                 if not file_path:
                     console.print("[yellow]Please select a file using the file picker.[/yellow]")
-                    console.print("[dim]Type # to browse files in the current directory[/dim]")
+                    console.print("[dim]Type @ to browse files in the current directory[/dim]")
                     continue
                 
                 # Handle relative paths - make them absolute
@@ -2367,9 +2367,9 @@ def chat_with_model(config, conversation_history=None):
                 else:
                     continue  # Skip if no message provided
             
-            elif '#' in user_input:
+            elif '@' in user_input:
                 # Handle file picker anywhere in the message
-                parts = user_input.split('#', 1)
+                parts = user_input.split('@', 1)
                 if len(parts) == 2:
                     message_part = parts[0].strip()
                     file_and_rest = parts[1].strip()
@@ -2454,7 +2454,7 @@ def chat_with_model(config, conversation_history=None):
                                "/update - Check for updates\n" \
                                "/thinking - Show last AI thinking process\n" \
                                "/thinking-mode - Toggle thinking mode on/off\n" \
-                               "# - Browse and attach files (can be used anywhere in your message)\n" \
+                               "@ - Browse and attach files (can be used anywhere in your message)\n" \
                                "[yellow]Press Ctrl+C twice to exit[/yellow]"
                     
                     if HAS_PROMPT_TOOLKIT:
