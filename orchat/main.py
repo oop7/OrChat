@@ -48,6 +48,13 @@ try:
 except ImportError:
     HAS_PROMPT_TOOLKIT = False
 
+try:
+    from bs4 import BeautifulSoup
+    import html2text
+    HAS_SCRAPING = True
+except ImportError:
+    HAS_SCRAPING = False
+
 # Initialize cross-platform support
 colorama.init()
 
@@ -131,6 +138,7 @@ class OrChatCompleter(Completer):
         'update': 'Check for updates',
         'thinking': 'Show last AI thinking process',
         'thinking-mode': 'Toggle thinking mode on/off',
+        'web': 'Scrape and inject web content. Usage: /web <url>',
         'help': 'Show available commands'
     }
     
@@ -2092,17 +2100,115 @@ def extract_file_content(file_path, file_ext):
             content = f.read()
         return "web", f"```{file_ext[1:]}\n{content}\n```"
 
-    elif file_ext in ['.zip', '.tar', '.gz', '.rar']:
-        return "archive", "[Archive content not displayed in chat]"
+# ============================================================================
+# WEB SCRAPING FUNCTIONS
+# ============================================================================
 
-    else:
-        # Try to read as text, but handle binary files
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-                content = f.read()
-            return "unknown", content
-        except:
-            return "binary", "[Binary content not displayed in chat]"
+def scrape_url(url: str, timeout: int = 30) -> tuple:
+    """
+    Scrape web content from a URL and convert to readable text/markdown.
+    
+    Args:
+        url: The URL to scrape
+        timeout: Request timeout in seconds
+        
+    Returns:
+        tuple: (success: bool, content: str or error_message: str)
+    """
+    if not HAS_SCRAPING:
+        return False, "Web scraping dependencies not installed. Run: pip install beautifulsoup4 html2text"
+    
+    try:
+        # Validate URL format
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+        
+        # Set user agent to avoid being blocked
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        # Fetch the webpage
+        with console.status(f"[bold cyan]Fetching content from {url}...[/bold cyan]"):
+            response = requests.get(url, headers=headers, timeout=timeout)
+            response.raise_for_status()
+        
+        # Check content type
+        content_type = response.headers.get('Content-Type', '').lower()
+        
+        # Handle non-HTML content
+        if 'application/json' in content_type:
+            return True, f"```json\n{response.text}\n```"
+        elif 'text/plain' in content_type:
+            return True, response.text
+        elif 'text/html' not in content_type and 'application/xhtml' not in content_type:
+            return False, f"Unsupported content type: {content_type}"
+        
+        # Parse HTML content
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Remove unwanted elements
+        for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe', 'noscript']):
+            element.decompose()
+        
+        # Remove SVG and excessive images (keep main content images)
+        for svg in soup.find_all('svg'):
+            svg.decompose()
+        
+        # Convert to markdown using html2text
+        h = html2text.HTML2Text()
+        h.ignore_links = False
+        h.ignore_images = True  # Ignore images in markdown conversion
+        h.ignore_emphasis = False
+        h.body_width = 0  # Don't wrap lines
+        
+        # Get the main content or fallback to body
+        main_content = soup.find('main') or soup.find('article') or soup.find('body')
+        
+        if main_content:
+            markdown_content = h.handle(str(main_content))
+        else:
+            markdown_content = h.handle(response.text)
+        
+        # Clean up excessive whitespace
+        lines = [line.rstrip() for line in markdown_content.split('\n')]
+        markdown_content = '\n'.join(lines)
+        
+        # Remove excessive blank lines (more than 2 consecutive)
+        while '\n\n\n\n' in markdown_content:
+            markdown_content = markdown_content.replace('\n\n\n\n', '\n\n\n')
+        
+        # Add metadata header
+        title = soup.find('title')
+        title_text = title.get_text().strip() if title else url
+        
+        result = f"# Web Content: {title_text}\n\n"
+        result += f"**Source:** {url}\n\n"
+        result += "---\n\n"
+        result += markdown_content.strip()
+        
+        return True, result
+        
+    except requests.exceptions.Timeout:
+        return False, f"Request timed out after {timeout} seconds"
+    except requests.exceptions.RequestException as e:
+        return False, f"Error fetching URL: {str(e)}"
+    except Exception as e:
+        return False, f"Error processing webpage: {str(e)}"
+
+def is_url(text: str) -> bool:
+    """Check if text contains a URL pattern."""
+    url_pattern = r'https?://[^\s]+'
+    return bool(re.search(url_pattern, text))
+
+def extract_urls(text: str) -> list:
+    """Extract all URLs from text."""
+    url_pattern = r'https?://[^\s]+'
+    return re.findall(url_pattern, text)
+
+# ============================================================================
+# CHAT AND STREAMING FUNCTIONS
+# ============================================================================
 
 
 
@@ -2454,6 +2560,7 @@ def chat_with_model(config, conversation_history=None):
                                "/update - Check for updates\n" \
                                "/thinking - Show last AI thinking process\n" \
                                "/thinking-mode - Toggle thinking mode on/off\n" \
+                               "/web <url> - Scrape and inject web content into context\n" \
                                "@ - Browse and attach files (can be used anywhere in your message)\n" \
                                "[yellow]Press Ctrl+C twice to exit[/yellow]"
                     
@@ -2755,6 +2862,54 @@ def chat_with_model(config, conversation_history=None):
                     console.print(f"[green]Thinking mode is now {'enabled' if config['thinking_mode'] else 'disabled'}[/green]")
                     continue
 
+                elif command.startswith('/web'):
+                    # Extract URL from command
+                    parts = user_input.split(maxsplit=1)
+                    if len(parts) < 2:
+                        console.print("[yellow]Usage: /web <url>[/yellow]")
+                        console.print("[dim]Example: /web https://example.com[/dim]")
+                        continue
+                    
+                    url = parts[1].strip()
+                    
+                    # Scrape the URL
+                    success, content = scrape_url(url)
+                    
+                    if success:
+                        # Add scraped content to conversation history
+                        conversation_history.append({
+                            "role": "user",
+                            "content": f"Here is web content I'd like you to analyze:\n\n{content}"
+                        })
+                        
+                        # Show preview of scraped content
+                        preview_lines = content.split('\n')[:10]
+                        preview = '\n'.join(preview_lines)
+                        if len(content.split('\n')) > 10:
+                            preview += f"\n\n[dim]... ({len(content.split(chr(10))) - 10} more lines)[/dim]"
+                        
+                        console.print(Panel.fit(
+                            f"[green]✓ Successfully scraped content from URL[/green]\n\n"
+                            f"[dim]Preview:[/dim]\n{preview[:500]}{'...' if len(preview) > 500 else ''}",
+                            title="🌐 Web Content Injected",
+                            border_style="green"
+                        ))
+                        
+                        console.print("\n[dim]The web content has been added to context. What would you like to know about it?[/dim]")
+                        
+                        # Get user's question about the content
+                        if HAS_PROMPT_TOOLKIT:
+                            user_input = get_user_input_with_completion(session_history)
+                        else:
+                            print("> ", end="")
+                            user_input = input()
+                        
+                        if not user_input.strip():
+                            continue
+                    else:
+                        console.print(f"[red]Failed to scrape URL: {content}[/red]")
+                        continue
+
                 elif command in ('/cls', '/clear-screen'):
 
                     # Clear the terminal
@@ -2859,6 +3014,60 @@ def chat_with_model(config, conversation_history=None):
                 else:
                     console.print("[yellow]Unknown command. Type /help for available commands.[/yellow]")
                     continue
+
+            # Check for URLs in user input and offer to scrape them
+            if is_url(user_input) and not user_input.startswith('/'):
+                urls = extract_urls(user_input)
+                if urls:
+                    console.print(f"\n[cyan]🔗 Detected {len(urls)} URL(s) in your message:[/cyan]")
+                    for idx, url in enumerate(urls, 1):
+                        console.print(f"  {idx}. {url}")
+                    
+                    scrape_choice = Prompt.ask(
+                        "\nWould you like to scrape and inject the web content into context?",
+                        choices=["y", "n", "a"],
+                        default="y"
+                    )
+                    
+                    if scrape_choice.lower() == 'y':
+                        # Ask which URL to scrape if multiple
+                        if len(urls) > 1:
+                            url_choice = Prompt.ask(
+                                "Which URL would you like to scrape?",
+                                choices=[str(i) for i in range(1, len(urls) + 1)] + ["all"],
+                                default="1"
+                            )
+                            
+                            if url_choice.lower() == "all":
+                                urls_to_scrape = urls
+                            else:
+                                urls_to_scrape = [urls[int(url_choice) - 1]]
+                        else:
+                            urls_to_scrape = urls
+                        
+                        # Scrape selected URLs
+                        for url in urls_to_scrape:
+                            success, content = scrape_url(url)
+                            
+                            if success:
+                                # Add scraped content before the user's message
+                                conversation_history.append({
+                                    "role": "user",
+                                    "content": f"[Web content from {url}]\n\n{content}"
+                                })
+                                console.print(f"[green]✓ Successfully scraped: {url}[/green]")
+                            else:
+                                console.print(f"[red]✗ Failed to scrape {url}: {content}[/red]")
+                    elif scrape_choice.lower() == 'a':
+                        # Scrape all URLs automatically
+                        for url in urls:
+                            success, content = scrape_url(url)
+                            if success:
+                                conversation_history.append({
+                                    "role": "user",
+                                    "content": f"[Web content from {url}]\n\n{content}"
+                                })
+                                console.print(f"[green]✓ Scraped: {url}[/green]")
 
             # Count tokens in user input
             # Estimate input tokens for display purposes (will be replaced by API data if available)

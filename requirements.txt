@@ -7,3 +7,5 @@ packaging
 pyfzf
 cryptography
 prompt_toolkit
+beautifulsoup4
+html2text
