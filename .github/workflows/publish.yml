@@ -33,9 +33,8 @@ jobs:
     
     - name: Test installation
       run: |
-        python -c "import main; print('main.py imported successfully')"
-        python main.py --help || echo "Direct execution test"
-        orchat --help || echo "CLI help command executed"
+        python -c "import orchat.main; print('orchat.main imported successfully')"
+        orchat --help
 
   build-and-publish:
     needs: test
