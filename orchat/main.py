@@ -64,7 +64,7 @@ colorama.init()
 
 # App metadata
 APP_NAME = "OrChat"
-APP_VERSION = "1.4.1"
+APP_VERSION = "1.4.3"
 REPO_URL = "https://github.com/oop7/OrChat"
 API_URL = "https://api.github.com/repos/oop7/OrChat/releases/latest"
 
@@ -3468,7 +3468,7 @@ def get_model_recommendations(task_type=None, budget=None):
 
 def main():
     parser = argparse.ArgumentParser(description="OrChat - AI chat powered by OpenRouter")
-    parser.add_argument("--version", action="version", version="OrChat v1.4.1")
+    parser.add_argument("--version", action="version", version="OrChat v1.4.3")
     parser.add_argument("--setup", action="store_true", help="Run the setup wizard")
     parser.add_argument("--model", type=str, help="Specify model to use")
     parser.add_argument("--task", type=str, choices=["creative", "coding", "analysis", "chat"],
