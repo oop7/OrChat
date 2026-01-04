@@ -35,6 +35,7 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - **Conversation Management**: Save, list, and resume conversations with AI-generated topic summaries
 - **Smart Summarization**: Automatically generates meaningful names for saved sessions (e.g., "python_coding", "travel_advice")
 - **Session Persistence**: Resume conversations exactly where you left off with full context
+- **Web Scraping**: Fetch and analyze web content directly in your conversations with automatic URL detection
 
 </details>
 
@@ -45,6 +46,7 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - **Interactive File Browser**: Browse files with icons, sizes, and directory navigation in a popup interface
 - **Multimodal Support**: Share images and various file types with compatible AI models
 - **Enhanced File Processing**: Improved file attachment with better error handling and path support
+- **Web Content Scraping**: Fetch and inject web content from URLs with automatic detection and clean markdown conversion
 
 </details>
 
@@ -241,6 +243,7 @@ THINKING_MODE = False
 | `/theme <theme>`          | Change the color theme (default, dark, light, hacker) |
 | `/thinking`               | Show last AI thinking process                         |
 | `/thinking-mode`          | Toggle thinking mode on/off                           |
+| `/web <url>`              | Scrape and inject web content into context            |
 | `/about`                  | Show information about OrChat                         |
 | `/update`                 | Check for updates                                     |
 | `/settings`               | View current settings                                 |
@@ -312,6 +315,47 @@ examine @script.py and explain its logic
 - **Data Files**: JSON, XML (displayed with formatting)
 - **Web Files**: HTML, CSS (formatted display)
 - **Archives**: ZIP, TAR, GZ, RAR (basic metadata support)
+
+</details>
+
+## 🌐 Web Scraping
+
+<details>
+<summary><strong>🔗 Basic Usage</strong></summary>
+
+Fetch and analyze web content directly in your conversations:
+
+```
+/web https://example.com
+```
+
+Or simply paste a URL in your message and OrChat will automatically detect it and offer to scrape the content:
+
+```
+check out this article: https://example.com/article
+```
+
+</details>
+
+<details>
+<summary><strong>✨ Features</strong></summary>
+
+- **Automatic URL Detection**: Paste URLs anywhere in your messages and get prompted to scrape them
+- **Clean Markdown Conversion**: Web content is converted to readable markdown format
+- **Smart Content Extraction**: Removes scripts, styles, navigation, and other non-essential elements
+- **Multiple URL Support**: Handle multiple URLs in a single message
+- **Content Preview**: See a preview of scraped content before it's injected into context
+- **Flexible Options**: Choose to scrape selected URLs or all detected URLs at once
+
+</details>
+
+<details>
+<summary><strong>📋 Supported Content Types</strong></summary>
+
+- **HTML Pages**: Automatically converted to clean, readable markdown
+- **JSON Data**: Displayed with proper formatting
+- **Plain Text**: Rendered as-is for easy reading
+- **Articles & Documentation**: Main content extracted automatically
 
 </details>
 
