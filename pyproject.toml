@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.scripts]
-orchat = "main:main"
+orchat = "orchat:main"
 
 [project.urls]
 Homepage = "https://github.com/oop7/OrChat"
@@ -40,4 +40,4 @@ Repository = "https://github.com/oop7/OrChat"
 Reddit = "https://www.reddit.com/r/NO-N_A_M_E/"
 
 [tool.setuptools]
-py-modules = ["main"]
+packages = ["orchat"]

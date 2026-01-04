@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 from pathlib import Path
 
 # Read README.md for long description
@@ -14,7 +14,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/oop7/OrChat",
-    py_modules=['main'],  # Single file instead of packages
+    packages=find_packages(),  # Use packages instead of py_modules
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
@@ -34,7 +34,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "orchat=main:main",  # Points to main() function in main.py
+            "orchat=orchat:main",  # Points to main() function in orchat package
         ],
     },
     project_urls={
