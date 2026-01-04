@@ -138,6 +138,7 @@ class OrChatCompleter(Completer):
         'update': 'Check for updates',
         'thinking': 'Show last AI thinking process',
         'thinking-mode': 'Toggle thinking mode on/off',
+        'auto-summarize': 'Toggle auto-summarization of old messages',
         'web': 'Scrape and inject web content. Usage: /web <url>',
         'help': 'Show available commands'
     }
@@ -470,7 +471,9 @@ def load_config() -> dict:
         'max_tokens': 0,
         'autosave_interval': 300,
         'streaming': True,
-        'thinking_mode': False
+        'thinking_mode': False,
+        'auto_summarize': True,
+        'summarize_threshold': 0.7
     }
 
     # Try to load from config.ini
@@ -509,7 +512,9 @@ def load_config() -> dict:
             'max_tokens': settings.getint('MAX_TOKENS', 0),
             'autosave_interval': settings.getint('AUTOSAVE_INTERVAL', 300),
             'streaming': settings.getboolean('STREAMING', True),
-            'thinking_mode': settings.getboolean('THINKING_MODE', False)
+            'thinking_mode': settings.getboolean('THINKING_MODE', False),
+            'auto_summarize': settings.getboolean('AUTO_SUMMARIZE', True),
+            'summarize_threshold': settings.getfloat('SUMMARIZE_THRESHOLD', 0.7)
         })
 
     return defaults
@@ -540,7 +545,9 @@ def save_config(config_data: dict) -> None:
         'MAX_TOKENS': str(config_data['max_tokens']),
         'AUTOSAVE_INTERVAL': str(config_data['autosave_interval']),
         'STREAMING': str(config_data['streaming']),
-        'THINKING_MODE': str(config_data['thinking_mode'])
+        'THINKING_MODE': str(config_data['thinking_mode']),
+        'AUTO_SUMMARIZE': str(config_data.get('auto_summarize', True)),
+        'SUMMARIZE_THRESHOLD': str(config_data.get('summarize_threshold', 0.7))
     }
 
     config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.ini')
@@ -1891,30 +1898,160 @@ def get_session_summary(session_dir):
             pass
     return os.path.basename(session_dir)  # Fallback to directory name
 
-def manage_context_window(conversation_history, max_tokens=8000, model_name="cl100k_base"):
-    """Manage the context window to prevent exceeding token limits"""
+def summarize_messages(messages, api_key, model=None):
+    """
+    Summarize a list of messages using AI to preserve context while reducing tokens.
+    
+    Args:
+        messages: List of message dictionaries to summarize
+        api_key: OpenRouter API key
+        model: Model to use for summarization (uses user's current model)
+        
+    Returns:
+        str: Concise summary of the messages
+    """
+    try:
+        # Format messages for summarization
+        conversation_text = ""
+        for msg in messages:
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '')
+            # Handle multimodal content
+            if isinstance(content, list):
+                text_parts = [item.get('text', '') for item in content if isinstance(item, dict) and item.get('type') == 'text']
+                content = ' '.join(text_parts)
+            conversation_text += f"{role.upper()}: {content}\n\n"
+        
+        # Create summarization prompt
+        summary_request = [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant that creates concise summaries of conversations. Preserve key information, decisions, code snippets, and important context. Be brief but comprehensive."
+            },
+            {
+                "role": "user",
+                "content": f"Please provide a concise summary of the following conversation, preserving important details, decisions, and context:\n\n{conversation_text}\n\nSummary:"
+            }
+        ]
+        
+        # Make API request for summary
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        
+        data = {
+            "model": model,
+            "messages": summary_request,
+            "temperature": 0.3,  # Lower temperature for more consistent summaries
+            "max_tokens": 500,  # Limit summary length
+            "stream": False
+        }
+        
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=data,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            summary = result['choices'][0]['message']['content'].strip()
+            return summary
+        else:
+            # Fallback to simple concatenation if API fails
+            return f"[Previous conversation with {len(messages)} messages]"
+            
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not generate summary: {str(e)}[/yellow]")
+        return f"[Previous conversation with {len(messages)} messages]"
+
+def manage_context_window(conversation_history, max_tokens=8000, model_name="cl100k_base", config=None):
+    """Manage the context window to prevent exceeding token limits with optional summarization"""
     # Always keep the system message
-    system_message = conversation_history[0]
+    system_message = conversation_history[0] if conversation_history else None
+    if not system_message:
+        return conversation_history, 0
 
     # Count total tokens in the conversation
-    total_tokens = sum(count_tokens(msg["content"], model_name) for msg in conversation_history)
+    total_tokens = 0
+    for msg in conversation_history:
+        content = msg.get("content", "")
+        # Handle multimodal content
+        if isinstance(content, list):
+            text_parts = [item.get('text', '') for item in content if isinstance(item, dict) and item.get('type') == 'text']
+            content = ' '.join(text_parts)
+        total_tokens += count_tokens(str(content), model_name)
 
     # If we're under the limit, no need to trim
     if total_tokens <= max_tokens:
         return conversation_history, 0
 
-    # We need to trim the conversation
-    # Start with just the system message
+    # Check if auto-summarization is enabled
+    auto_summarize = config.get('auto_summarize', True) if config else True
+    summarize_threshold = config.get('summarize_threshold', 0.7) if config else 0.7
+    
+    # Calculate how many tokens we need to free up
+    tokens_to_free = total_tokens - int(max_tokens * summarize_threshold)
+    
+    if auto_summarize and len(conversation_history) > 3:  # Need at least a few messages to summarize
+        # Collect old messages to summarize
+        messages_to_summarize = []
+        current_token_count = 0
+        
+        # Start from index 1 (after system message) and collect messages until we have enough tokens
+        for i in range(1, len(conversation_history)):
+            msg = conversation_history[i]
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                text_parts = [item.get('text', '') for item in content if isinstance(item, dict) and item.get('type') == 'text']
+                content = ' '.join(text_parts)
+            msg_tokens = count_tokens(str(content), model_name)
+            
+            messages_to_summarize.append(msg)
+            current_token_count += msg_tokens
+            
+            # Stop when we've collected enough messages to summarize
+            if current_token_count >= tokens_to_free and len(messages_to_summarize) >= 2:
+                break
+        
+        # Only summarize if we have at least 2 messages and we're not summarizing the most recent exchange
+        if len(messages_to_summarize) >= 2 and len(messages_to_summarize) < len(conversation_history) - 2:
+            api_key = config.get('api_key') if config else None
+            user_model = config.get('model') if config else 'openai/gpt-4o'
+            if api_key:
+                summary = summarize_messages(messages_to_summarize, api_key, user_model)
+                
+                # Create new history with summary
+                new_history = [system_message]
+                summary_msg = {
+                    "role": "system",
+                    "content": f"[Summary of previous conversation]\n{summary}"
+                }
+                new_history.append(summary_msg)
+                
+                # Add remaining messages after the summarized ones
+                new_history.extend(conversation_history[1 + len(messages_to_summarize):])
+                
+                console.print(f"[cyan]ℹ️  Summarized {len(messages_to_summarize)} older messages to maintain context within token limits[/cyan]")
+                return new_history, len(messages_to_summarize)
+    
+    # Fallback to trimming if summarization is disabled or failed
     trimmed_history = [system_message]
-    current_tokens = count_tokens(system_message["content"], model_name)
+    current_tokens = count_tokens(str(system_message["content"]), model_name)
 
     # Add messages from the end (most recent) until we approach the limit
-    # Leave room for the next user message
     messages_to_consider = conversation_history[1:]
     trimmed_count = 0
 
     for msg in reversed(messages_to_consider):
-        msg_tokens = count_tokens(msg["content"], model_name)
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            text_parts = [item.get('text', '') for item in content if isinstance(item, dict) and item.get('type') == 'text']
+            content = ' '.join(text_parts)
+        msg_tokens = count_tokens(str(content), model_name)
+        
         if current_tokens + msg_tokens < max_tokens - 1000:  # Leave 1000 tokens buffer
             trimmed_history.insert(1, msg)  # Insert after system message
             current_tokens += msg_tokens
@@ -2384,7 +2521,7 @@ def chat_with_model(config, conversation_history=None):
     autosave_interval = config['autosave_interval']
 
     # Check if we need to trim the conversation history
-    conversation_history, trimmed_count = manage_context_window(conversation_history, max_tokens=max_tokens, model_name=config['model'])
+    conversation_history, trimmed_count = manage_context_window(conversation_history, max_tokens=max_tokens, model_name=config['model'], config=config)
     if trimmed_count > 0:
         console.print(f"[yellow]Note: Removed {trimmed_count} earlier messages to stay within the context window.[/yellow]")
 
@@ -2560,6 +2697,7 @@ def chat_with_model(config, conversation_history=None):
                                "/update - Check for updates\n" \
                                "/thinking - Show last AI thinking process\n" \
                                "/thinking-mode - Toggle thinking mode on/off\n" \
+                               "/auto-summarize - Toggle auto-summarization of old messages\n" \
                                "/web <url> - Scrape and inject web content into context\n" \
                                "@ - Browse and attach files (can be used anywhere in your message)\n" \
                                "[yellow]Press Ctrl+C twice to exit[/yellow]"
@@ -2648,10 +2786,13 @@ def chat_with_model(config, conversation_history=None):
                     continue
 
                 elif command == '/settings':
+                    auto_sum_status = '✓ Enabled' if config.get('auto_summarize', True) else '✗ Disabled'
                     console.print(Panel.fit(
                         f"Current Settings:\n"
                         f"Model: {config['model']}\n"
                         f"Temperature: {config['temperature']}\n"
+                        f"Thinking Mode: {'✓ Enabled' if config.get('thinking_mode', False) else '✗ Disabled'}\n"
+                        f"Auto-Summarize: {auto_sum_status} (threshold: {config.get('summarize_threshold', 0.7):.0%})\n"
                         f"System Instructions: {config['system_instructions'][:50]}...",
                         title="Settings"
                     ))
@@ -2860,6 +3001,17 @@ def chat_with_model(config, conversation_history=None):
                             conversation_history[0]['content'] = original_instructions
 
                     console.print(f"[green]Thinking mode is now {'enabled' if config['thinking_mode'] else 'disabled'}[/green]")
+                    continue
+
+                elif command == '/auto-summarize':
+                    # Toggle auto-summarization mode
+                    config['auto_summarize'] = not config.get('auto_summarize', True)
+                    save_config(config)
+                    console.print(f"[green]Auto-summarization is now {'enabled' if config['auto_summarize'] else 'disabled'}[/green]")
+                    if config['auto_summarize']:
+                        console.print(f"[dim]Older messages will be summarized when reaching {config.get('summarize_threshold', 0.7):.0%} of token limit[/dim]")
+                    else:
+                        console.print(f"[dim]Older messages will be trimmed instead of summarized[/dim]")
                     continue
 
                 elif command.startswith('/web'):
@@ -3087,7 +3239,7 @@ def chat_with_model(config, conversation_history=None):
                 display_max_tokens = max_tokens
 
             # Check if we need to trim the conversation history
-            conversation_history, trimmed_count = manage_context_window(conversation_history, max_tokens=max_tokens, model_name=config['model'])
+            conversation_history, trimmed_count = manage_context_window(conversation_history, max_tokens=max_tokens, model_name=config['model'], config=config)
             if trimmed_count > 0:
                 console.print(f"[yellow]Note: Removed {trimmed_count} earlier messages to stay within the context window.[/yellow]")
 

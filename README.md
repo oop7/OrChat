@@ -34,6 +34,7 @@ A powerful CLI for chatting with AI models through OpenRouter with streaming res
 - **Multi-line Input Support**: Compose multi-paragraph messages with `Esc+Enter` and visual feedback
 - **Conversation Management**: Save, list, and resume conversations with AI-generated topic summaries
 - **Smart Summarization**: Automatically generates meaningful names for saved sessions (e.g., "python_coding", "travel_advice")
+- **Auto-Summarization**: Intelligently summarizes old messages instead of trimming them to preserve context within token limits
 - **Session Persistence**: Resume conversations exactly where you left off with full context
 - **Web Scraping**: Fetch and analyze web content directly in your conversations with automatic URL detection
 
@@ -243,6 +244,7 @@ THINKING_MODE = False
 | `/theme <theme>`          | Change the color theme (default, dark, light, hacker) |
 | `/thinking`               | Show last AI thinking process                         |
 | `/thinking-mode`          | Toggle thinking mode on/off                           |
+| `/auto-summarize`         | Toggle auto-summarization of old messages             |
 | `/web <url>`              | Scrape and inject web content into context            |
 | `/about`                  | Show information about OrChat                         |
 | `/update`                 | Check for updates                                     |
@@ -407,11 +409,21 @@ Change the visual appearance with the `/theme` command:
 
 OrChat intelligently manages conversation context to keep within token limits:
 
-- Automatically trims old messages when approaching limits
+- **Auto-Summarization** (NEW): Instead of simply trimming old messages, OrChat uses AI to create concise summaries of earlier conversation parts, preserving important context while freeing up tokens
+- **Configurable Threshold**: Set when summarization kicks in (default: 70% of token limit)
+- **Fallback Trimming**: If summarization is disabled or fails, automatically trims old messages
+- **Visual Feedback**: Clear notifications when messages are summarized or trimmed
 - Displays comprehensive token usage statistics including total tokens and cost tracking
 - Shows real-time pricing information during active sessions
 - Displays total cost tracking across conversations
 - Allows manual clearing of context with `/clear`
+- Toggle auto-summarization with `/auto-summarize` command
+
+**How it works:**
+- When your conversation approaches the token limit (default: 70%), OrChat automatically summarizes the oldest messages
+- The summary preserves key information, decisions, and context in a condensed form
+- Recent messages are kept in full to maintain conversation flow
+- You can disable this feature and revert to simple trimming with `/auto-summarize`
 
 </details>
 
